@@ -12,6 +12,17 @@ hechos de especulación y guarda los dossiers en una sección aparte con imágen
 > teorías se etiquetan claramente como tales y se separan de los documentos
 > oficiales. No es una herramienta de afirmación de teorías sino de análisis.
 
+## Capturas
+
+**Documentos desclasificados** — buscador, filtros, paginación y estadísticas:
+
+![Panel de documentos](docs/screenshots/documentos.png)
+
+**Dossiers del Detective** — investigación autónoma con imágenes, hechos verificados,
+especulación marcada como tal y veredicto del analista:
+
+![Dossiers del Detective](docs/screenshots/investigaciones.png)
+
 ## Cómo arrancarlo
 
 Necesitas **Python 3.10+** instalado.
