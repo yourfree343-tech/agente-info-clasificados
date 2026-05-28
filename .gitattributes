@@ -1,0 +1,16 @@
+# Normaliza finales de línea: imprescindible para que iniciar.sh funcione en Mac/Linux
+* text=auto eol=lf
+
+# Scripts de Windows: CRLF
+*.bat text eol=crlf
+
+# Scripts de Unix: LF (no tocar)
+*.sh text eol=lf
+
+# Binarios: no normalizar
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.db binary

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🕵️ Investigaciones del Detective</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%95%B5%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="detective-page">
+
+<nav>
+  <div class="nav-brand"><span class="icon">👁️</span><span>Archivo·Clasificado</span></div>
+  <div class="nav-tabs">
+    <a class="nav-tab" href="/">📂 Documentos</a>
+    <a class="nav-tab active" href="/investigaciones">🕵️ Investigaciones</a>
+  </div>
+  <div class="nav-right">
+    <span id="detective-status">Cargando...</span>
+    <button class="btn btn-detective" id="btn-investigar" onclick="investigar()">🔍 Investigar ahora</button>
+  </div>
+</nav>
+
+<div class="container">
+
+  <header class="hero">
+    <div class="hero-symbols">🕵️ 👁️ 🔺 🛸 👽 📡 ☢️ 🜏</div>
+    <h1 class="hero-title">DOSSIERS DEL DETECTIVE</h1>
+    <p class="hero-sub">Investigación autónoma en internet · año <b>2026</b> · <b>OVNIs</b>, <b>MK-Ultra</b>, <b>Illuminati</b>, <b>Bilderberg</b>, portadas de <b>The Economist</b> y todo lo que el detective quiera</p>
+    <div class="stamp">ZONA ESPECULATIVA</div>
+  </header>
+
+  <div class="detective-warn">⚠ Estas investigaciones son <b>ESPECULATIVAS</b> y están separadas de los documentos desclasificados oficiales. Las teorías se etiquetan claramente como tales.</div>
+
+  <div class="detective-bar">
+    <div class="info">Motor: <b><span id="motor-name">—</span></b> · Auto: <b><span id="auto-mode">—</span></b> · Total dossiers: <b><span id="total-inv">0</span></b></div>
+    <div class="info">El detective investiga solo cada <b><span id="interval-min">—</span></b> min · puedes pulsar el botón para forzar</div>
+  </div>
+
+  <div id="investigaciones-container"><div class="loader"><span class="spinner"></span>Cargando dossiers...</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+async function checkEstado() {
+  try {
+    const r = await fetch('/api/detective/estado');
+    const e = await r.json();
+    document.getElementById('motor-name').textContent = e.motor || '—';
+    document.getElementById('total-inv').textContent = e.total || 0;
+    document.getElementById('auto-mode').textContent = e.auto ? 'sí (' + (e.interval_min||'—') + ' min)' : 'no';
+    document.getElementById('interval-min').textContent = e.interval_min || '—';
+    document.getElementById('detective-status').textContent = e.motor_disponible ? '🟢 motor activo' : '🔴 motor no disponible';
+  } catch(e) {}
+}
+
+async function loadInvestigaciones() {
+  try {
+    const r = await fetch('/api/investigaciones');
+    const invs = await r.json();
+    const c = document.getElementById('investigaciones-container');
+    if (!invs.length) {
+      c.innerHTML = '<div class="empty"><div class="icon">🕳️</div><p>Aún no hay dossiers. El detective está investigando en segundo plano — vuelve en un rato, o pulsa "Investigar ahora".</p></div>';
+      return;
+    }
+    c.innerHTML = invs.map(render).join('');
+  } catch(e) {}
+}
+
+function lista(arr) {
+  return (arr && arr.length) ? '<ul>' + arr.map(x => `<li>${escHtml(x)}</li>`).join('') + '</ul>' : '<div style="color:var(--muted);font-size:12px">—</div>';
+}
+
+function render(v) {
+  const fuentes = (v.fuentes || []).map(u => `<a href="${escAttr(u)}" target="_blank" rel="noopener">${escHtml(u)}</a>`).join('');
+  const fecha = (v.fecha || '').replace('T',' ').split('.')[0];
+  const imgs = (v.imagenes || []).map(im => `
+    <a class="inv-img" href="${escAttr(im.url)}" target="_blank" rel="noopener" title="${escHtml(im.titulo || im.origen || '')}">
+      <img src="${escAttr(im.thumb || im.url)}" alt="${escHtml(im.titulo || '')}" loading="lazy" onerror="this.style.display='none'">
+      ${im.origen ? `<div class="cap">${escHtml(im.origen)}</div>` : ''}
+    </a>`).join('');
+  return `
+  <div class="inv-card">
+    <div class="inv-titulo">📕 ${escHtml(v.titulo || v.tema)}</div>
+    <div class="inv-meta">${escHtml(v.id)} · ${escHtml(fecha)} · certeza: ${escHtml(v.nivel_certeza||'—')} · ${escHtml(v.motor||'')}</div>
+    ${v.gancho ? `<div class="inv-gancho">${escHtml(v.gancho)}</div>` : ''}
+    ${imgs ? `<div class="inv-images">${imgs}</div>` : ''}
+    <div class="inv-block hechos"><h4>✓ Hechos verificados</h4>${lista(v.hechos_verificados)}</div>
+    <div class="inv-block hipotesis"><h4>👁 Hipótesis y conexiones</h4>${lista(v.hipotesis)}</div>
+    ${(v.conexiones&&v.conexiones.length)?`<div class="inv-block conexiones"><h4>🔗 Patrones / símbolos</h4>${lista(v.conexiones)}</div>`:''}
+    <div class="inv-block especulacion"><h4>⚠ Especulación (NO probado)</h4>${lista(v.especulacion)}</div>
+    <div class="inv-block"><h4 style="color:var(--text)">🧠 Veredicto del analista</h4><div class="inv-veredicto">${escHtml(v.veredicto||'—')}</div></div>
+    ${fuentes ? `<div class="inv-fuentes"><strong style="color:var(--muted)">Fuentes:</strong><br>${fuentes}</div>` : ''}
+  </div>`;
+}
+
+async function investigar() {
+  const b = document.getElementById('btn-investigar');
+  b.disabled = true; b.textContent = '🔍 Investigando (~15-20 min en CPU)...';
+  showToast('🕵️ El detective está investigando. Tardará varios minutos con el modelo local.');
+  try {
+    const r = await fetch('/api/investigar', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      showToast('✅ Nuevo dossier: ' + (d.investigacion?.titulo || 'caso cerrado'));
+      await Promise.all([loadInvestigaciones(), checkEstado()]);
+    } else {
+      showToast('⚠️ ' + (d.error || 'No se pudo investigar.'));
+    }
+  } catch(e) {
+    showToast('⚠️ No se pudo conectar con el servidor.');
+  }
+  b.disabled = false; b.textContent = '🔍 Investigar ahora';
+}
+
+function showToast(m) {
+  const t = document.getElementById('toast');
+  t.textContent = m; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 4500);
+}
+function escHtml(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s) { if (!s) return '#'; if (!/^https?:\/\//i.test(s)) return '#'; return String(s).replace(/"/g,'&quot;'); }
+
+(async function() {
+  await Promise.all([loadInvestigaciones(), checkEstado()]);
+  setInterval(() => { loadInvestigaciones(); checkEstado(); }, 60000);
+})();
+</script>
+</body>
+</html>

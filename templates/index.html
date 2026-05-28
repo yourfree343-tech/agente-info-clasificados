@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚠ ARCHIVOS CLASIFICADOS ⚠</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%91%81%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand"><span class="icon">👁️</span><span>Archivo·Clasificado</span></div>
+  <div class="nav-tabs">
+    <a class="nav-tab active" href="/">📂 Documentos</a>
+    <a class="nav-tab" href="/investigaciones">🕵️ Investigaciones</a>
+  </div>
+  <div class="nav-right">
+    <span id="update-status">Cargando...</span>
+    <button class="btn" onclick="traducirTitulos()" id="btn-traducir" style="display:none">🌐 Traducir títulos</button>
+    <button class="btn" onclick="analizarPendientes()" id="btn-ia">🤖 Analizar pendientes</button>
+    <button class="btn btn-success" onclick="triggerUpdate()" id="btn-update">⟳ Actualizar ahora</button>
+    <a class="btn btn-primary" href="/api/exportar" download>⬇ Exportar JSON</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <header class="hero">
+    <div class="hero-symbols">👁️ 🔺 🛸 👽 📡 ☢️ 🕳️ 🜏</div>
+    <h1 class="hero-title">ARCHIVOS CLASIFICADOS</h1>
+    <p class="hero-sub">Desclasificados oficiales <b>2026</b> · <b>OVNIs</b> · <b>MK-Ultra</b> · <b>JFK</b> · <b>Stargate</b> · <b>Northwoods</b> · <b>Paperclip</b></p>
+    <div class="stamp">TOP SECRET // DESCLASIFICADO</div>
+  </header>
+
+  <div id="ia-banner" style="display:none; background:rgba(224,179,65,0.10); border:1px solid rgba(224,179,65,0.4); border-radius:6px; padding:14px 18px; margin-bottom:20px; color:var(--text); font-size:13px; line-height:1.6;">
+    🤖 <strong>Resúmenes con IA no activados.</strong> Configura un motor en <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">config.py</code> (Gemini o LM Studio local).
+  </div>
+
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card"><div class="num" id="stat-total">—</div><div class="lbl">📂 Expedientes totales</div></div>
+    <div class="stat-card"><div class="num" id="stat-nuevos" style="color:var(--danger)">—</div><div class="lbl">🆕 Nuevos hoy</div></div>
+    <div class="stat-card"><div class="num" id="stat-oficial" style="color:var(--alto)">—</div><div class="lbl">✓ Verificados oficiales</div></div>
+    <div class="stat-card"><div class="num" id="stat-posible" style="color:var(--medio)">—</div><div class="lbl">⚠ Posibles (sin verificar)</div></div>
+    <div class="stat-card"><div class="num" id="stat-paises">—</div><div class="lbl">🌍 Países</div></div>
+  </div>
+
+  <div class="charts-row">
+    <div class="chart-card"><h3>△ Por categoría</h3><div id="chart-categorias"></div></div>
+    <div class="chart-card"><h3>👁 Por país</h3><div id="chart-paises"></div></div>
+  </div>
+
+  <div class="filters">
+    <div class="filter-group"><label>Búsqueda libre</label><input type="text" id="search-input" placeholder="🔍 Buscar..." oninput="debounceLoad()"></div>
+    <div class="filter-group"><label>Categoría</label><select id="filter-categoria" onchange="loadDocs()">
+      <option value="">Todas</option>
+      <option>Seguridad y defensa</option><option>Inteligencia y espionaje</option>
+      <option>Política exterior y diplomacia</option><option>Derechos humanos</option>
+      <option>Economía y sanciones</option><option>Ciencia y tecnología militar</option>
+      <option>Corrupción y gobernanza</option><option>Energía y recursos</option><option>Otras</option>
+    </select></div>
+    <div class="filter-group"><label>País</label><select id="filter-pais" onchange="loadDocs()">
+      <option value="">Todos</option><option>EE. UU.</option><option>España</option>
+      <option>Reino Unido</option><option>Argentina</option>
+    </select></div>
+    <div class="filter-group"><label>Confianza</label><select id="filter-confianza" onchange="loadDocs()">
+      <option value="">Todas</option><option value="ALTO">Alta</option>
+      <option value="MEDIO">Media</option><option value="BAJO">Baja</option>
+    </select></div>
+    <div class="filter-group"><label>Verificación</label><select id="filter-verificado" onchange="loadDocs()">
+      <option value="">Todas</option><option value="Oficial">Oficial</option>
+      <option value="Posible">Posible (sin verificar)</option>
+    </select></div>
+    <div class="filter-group"><label>Desde</label><input type="date" id="filter-desde" onchange="loadDocs()"></div>
+    <div class="filter-group"><label>Hasta</label><input type="date" id="filter-hasta" onchange="loadDocs()"></div>
+    <div class="filter-actions"><button class="btn" onclick="clearFilters()">✕ Limpiar</button></div>
+  </div>
+
+  <div class="results-bar">
+    <span id="results-count">Cargando...</span>
+    <span style="color:var(--muted); font-size:12px;">▼ Más recientes primero</span>
+  </div>
+  <div id="docs-container"><div class="loader"><span class="spinner"></span>Accediendo a los archivos clasificados...</div></div>
+  <div class="pagination" id="pagination"></div>
+
+  <div class="log-section">
+    <h2>📡 Registro de vigilancia · actualizaciones automáticas</h2>
+    <table class="log-table">
+      <thead><tr><th>Fecha</th><th>Fuente</th><th>Enc.</th><th>Nuevos</th><th>Estado</th><th>Detalle</th></tr></thead>
+      <tbody id="log-tbody"><tr><td colspan="6" style="color:var(--muted); text-align:center; padding:20px;">Cargando...</td></tr></tbody>
+    </table>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const PAGE_SIZE = 10;
+let allDocs = [];
+let currentPage = 1;
+let debounceTimer = null;
+
+function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(loadDocs, 350); }
+
+async function loadDocs() {
+  const params = new URLSearchParams();
+  const v = id => document.getElementById(id).value;
+  const s = v('search-input').trim();
+  if (s) params.set('busqueda', s);
+  if (v('filter-categoria')) params.set('categoria', v('filter-categoria'));
+  if (v('filter-pais')) params.set('pais', v('filter-pais'));
+  if (v('filter-confianza')) params.set('confianza', v('filter-confianza'));
+  if (v('filter-verificado')) params.set('verificado', v('filter-verificado'));
+  if (v('filter-desde')) params.set('fecha_desde', v('filter-desde'));
+  if (v('filter-hasta')) params.set('fecha_hasta', v('filter-hasta'));
+
+  const c = document.getElementById('docs-container');
+  c.innerHTML = '<div class="loader"><span class="spinner"></span>Cargando...</div>';
+  try {
+    const r = await fetch('/api/documentos?' + params.toString());
+    allDocs = await r.json();
+    currentPage = 1;
+    renderPage();
+  } catch(e) {
+    c.innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>Error al cargar.</p></div>';
+  }
+}
+
+function renderPage() {
+  const total = allDocs.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const slice = allDocs.slice(start, start + PAGE_SIZE);
+  const c = document.getElementById('docs-container');
+  if (!slice.length) {
+    c.innerHTML = '<div class="empty"><div class="icon">🕳️</div><p>No se encontraron expedientes.</p></div>';
+  } else {
+    c.innerHTML = slice.map((d, i) => renderCard(d, start + i)).join('');
+  }
+  document.getElementById('results-count').innerHTML =
+    `<strong>${total}</strong> expediente${total!==1?'s':''} · página <strong>${currentPage}</strong> de <strong>${totalPages}</strong>`;
+  renderPagination(totalPages);
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function renderPagination(totalPages) {
+  const p = document.getElementById('pagination');
+  if (totalPages <= 1) { p.innerHTML = ''; return; }
+  p.innerHTML = `
+    <button class="btn" onclick="goPage(1)" ${currentPage===1?'disabled':''}>« primera</button>
+    <button class="btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹ anterior</button>
+    <span class="page-info">${currentPage} / ${totalPages}</span>
+    <button class="btn" onclick="goPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>siguiente ›</button>
+    <button class="btn" onclick="goPage(${totalPages})" ${currentPage===totalPages?'disabled':''}>última »</button>`;
+}
+function goPage(n) { currentPage = n; renderPage(); }
+
+function isToday(iso) {
+  if (!iso) return false;
+  const hoy = new Date().toISOString().slice(0,10);
+  return iso.slice(0,10) === hoy;
+}
+
+function renderCard(d, i) {
+  const cats = (d.categorias || []).map(c => `<span class="tag">${escHtml(c)}</span>`).join('');
+  const nivel = ((d.nivel_confianza || '').toUpperCase().match(/ALTO|MEDIO|BAJO/) || ['MEDIO'])[0];
+  const puntos = (d.puntos_clave || []).map(p => `<li>${escHtml(p)}</li>`).join('');
+  const orgs = (d.organismo || []).map(o => `<span class="org-badge">${escHtml(o)}</span>`).join('');
+  const verif = d.verificado || '';
+  const verifClass = verif === 'Oficial' ? 'verif-Oficial' : 'verif-Posible';
+  const verifBadge = verif ? `<span class="verif-badge ${verifClass}">${verif==='Oficial'?'✓':'⚠'} ${escHtml(verif)}</span>` : '';
+  const ribbon = isToday(d.fecha_ingreso) ? '<div class="nuevo-ribbon">NUEVO</div>' : '';
+  const iaBadge = d.analizado_ia === 'gemini' ? '<span class="ia-badge">🤖 IA</span>' : '';
+  return `
+  <div class="doc-card" id="card-${i}">
+    ${ribbon}
+    <div class="doc-header" onclick="toggleCard(${i})">
+      <div class="doc-meta-left">
+        <div class="doc-id">▣ EXPEDIENTE ${escHtml(d.id)}</div>
+        <div class="doc-titulo">${escHtml(d.titulo)}</div>
+        <div class="doc-tags">
+          <span class="tag tag-fecha">📅 ${escHtml(d.fecha_documento||'—')}</span>
+          <span class="tag tag-pais">🌍 ${escHtml(d.pais||'—')}</span>
+          <span class="tag tag-tipo">📄 ${escHtml(d.num_documentos||'—')}</span>
+          ${cats}
+        </div>
+      </div>
+      <div class="doc-meta-right">
+        ${iaBadge}${verifBadge}
+        <span class="confidence-badge conf-${nivel}">● ${nivel}</span>
+        <span class="estado-badge">${escHtml((d.estado_desclasificacion||'').substring(0,60))}${(d.estado_desclasificacion||'').length>60?'…':''}</span>
+      </div>
+      <span class="chevron">›</span>
+    </div>
+    <div class="doc-body">
+      <div class="section-title">Resumen ejecutivo ${d.analizado_ia==='gemini'?'<span style="color:#bc8cff;font-weight:400;text-transform:none;letter-spacing:0">· generado por IA</span>':''}</div>
+      <div class="resumen">${escHtml(d.resumen_ejecutivo || '—')}</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-ia-card" onclick="event.stopPropagation(); analizarUno('${d.id}', this)">🤖 ${d.analizado_ia==='gemini'?'Volver a resumir con IA':'Resumir con IA'}</button>
+        <button class="btn btn-informe" onclick="event.stopPropagation(); generarInforme('${d.id}', this)">📄 Descargar informe PDF</button>
+      </div>
+      <div class="section-title">Puntos clave</div>
+      <ul class="puntos">${puntos || '<li>No disponible</li>'}</ul>
+      <div class="section-title">Implicaciones</div>
+      <div class="implicaciones">${escHtml(d.implicaciones || '—')}</div>
+      <div class="section-title">Metadatos y trazabilidad</div>
+      <div class="meta-grid">
+        <div class="meta-item"><div class="meta-k">Organismo(s)</div><div class="meta-v"><div class="org-list">${orgs||'—'}</div></div></div>
+        <div class="meta-item"><div class="meta-k">Tipo</div><div class="meta-v">${escHtml(d.tipo_documento||'—')}</div></div>
+        <div class="meta-item"><div class="meta-k">Clasificación</div><div class="meta-v">${escHtml(d.clasificacion_original||'—')}</div></div>
+        <div class="meta-item"><div class="meta-k">Idioma original</div><div class="meta-v">${escHtml(d.idioma_original||'—')}</div></div>
+        <div class="meta-item"><div class="meta-k">Verificación</div><div class="meta-v">${escHtml(d.verificado||'—')}</div></div>
+        <div class="meta-item"><div class="meta-k">Fiabilidad fuente</div><div class="meta-v">${escHtml(d.fuente_fiabilidad||'—')}</div></div>
+        <div class="meta-item"><div class="meta-k">URL fuente</div><div class="meta-v"><a href="${escAttr(d.url_fuente)}" target="_blank" rel="noopener">${escHtml(d.url_fuente||'—')}</a></div></div>
+        <div class="meta-item"><div class="meta-k">URL noticia</div><div class="meta-v">${d.url_noticia?`<a href="${escAttr(d.url_noticia)}" target="_blank" rel="noopener">${escHtml(d.url_noticia)}</a>`:'—'}</div></div>
+        <div class="meta-item"><div class="meta-k">Fecha acceso</div><div class="meta-v">${escHtml(d.fecha_acceso||'—')}</div></div>
+        <div class="meta-item"><div class="meta-k">Ingreso BD</div><div class="meta-v">${escHtml((d.fecha_ingreso||'—').replace('T',' ').split('.')[0])}</div></div>
+      </div>
+      <div class="confianza-note" style="margin-top:12px"><strong>Confianza ${escHtml(d.nivel_confianza||'')}:</strong> ${escHtml(d.razon_confianza||'—')}</div>
+      <div class="confianza-note" style="margin-top:6px">${escHtml(d.verificacion_autenticidad||'')}</div>
+    </div>
+  </div>`;
+}
+
+function toggleCard(i) { document.getElementById('card-'+i).classList.toggle('open'); }
+
+async function loadStats() {
+  try {
+    const s = await (await fetch('/api/stats')).json();
+    document.getElementById('stat-total').textContent = s.total;
+    document.getElementById('stat-nuevos').textContent = s.nuevos_hoy || 0;
+    document.getElementById('stat-oficial').textContent = (s.por_verificacion && s.por_verificacion['Oficial']) || 0;
+    document.getElementById('stat-posible').textContent = (s.por_verificacion && s.por_verificacion['Posible']) || 0;
+    document.getElementById('stat-paises').textContent = s.por_pais.length;
+    const maxCat = Math.max(...s.por_categoria.map(c=>c[1]), 1);
+    const colors = ['#46d160','#e0b341','#bc8cff','#ff4d4d','#2bb6ff','#ff7b72','#6fe089','#f0cf6a'];
+    document.getElementById('chart-categorias').innerHTML = s.por_categoria.slice(0,8).map(([cat,n],i)=>`
+      <div class="bar-row"><div class="bar-label" title="${escHtml(cat)}">${escHtml(cat)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(n/maxCat*100)}%;background:${colors[i%colors.length]}"></div></div>
+      <div class="bar-val">${n}</div></div>`).join('');
+    const maxP = Math.max(...s.por_pais.map(p=>p.n), 1);
+    document.getElementById('chart-paises').innerHTML = s.por_pais.map((p,i)=>`
+      <div class="bar-row"><div class="bar-label">${escHtml(p.pais)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(p.n/maxP*100)}%;background:${colors[i%colors.length]}"></div></div>
+      <div class="bar-val">${p.n}</div></div>`).join('');
+  } catch(e) {}
+}
+
+async function loadLog() {
+  try {
+    const rows = await (await fetch('/api/actualizaciones')).json();
+    const tbody = document.getElementById('log-tbody');
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px;">Sin actualizaciones aún.</td></tr>'; return; }
+    tbody.innerHTML = rows.map(r => `
+      <tr><td>${escHtml((r.timestamp||'').replace('T',' ').split('.')[0])}</td><td>${escHtml(r.fuente||'—')}</td>
+      <td>${r.docs_encontrados??'—'}</td><td>${r.docs_nuevos??'—'}</td>
+      <td class="${r.estado==='OK'?'status-ok':'status-error'}">${escHtml(r.estado||'')}</td>
+      <td style="color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis">${escHtml(r.detalle||'')}</td></tr>`).join('');
+    document.getElementById('update-status').textContent = 'Última: ' + (rows[0].timestamp||'').replace('T',' ').split('.')[0];
+  } catch(e) {}
+}
+
+async function triggerUpdate() {
+  const b = document.getElementById('btn-update');
+  b.disabled = true; b.textContent = '⟳ Actualizando...';
+  showToast('🔄 Iniciando rastreo de fuentes...');
+  try {
+    const d = await (await fetch('/api/actualizar', { method: 'POST' })).json();
+    if (d.ok) { showToast(`✅ ${d.nuevos} nuevos.`); await Promise.all([loadDocs(), loadStats(), loadLog()]); }
+    else showToast('⚠️ ' + (d.error||'error'));
+  } catch(e) { showToast('⚠️ Sin conexión.'); }
+  b.disabled = false; b.innerHTML = '⟳ Actualizar ahora';
+}
+
+async function checkIaEstado() {
+  try {
+    const e = await (await fetch('/api/ia/estado')).json();
+    document.getElementById('ia-banner').style.display = e.configurada ? 'none' : 'block';
+    const btn = document.getElementById('btn-ia');
+    if (e.configurada) {
+      btn.style.display = 'inline-flex';
+      btn.textContent = e.pendientes > 0 ? `🤖 Analizar ${e.pendientes} pendiente(s)` : '🤖 Analizar pendientes';
+      btn.disabled = e.pendientes === 0;
+    } else btn.style.display = 'none';
+    const btnT = document.getElementById('btn-traducir');
+    if (e.configurada && e.titulos_pendientes > 0) {
+      btnT.style.display = 'inline-flex';
+      btnT.textContent = `🌐 Traducir ${e.titulos_pendientes} título(s)`;
+      btnT.disabled = false;
+    } else btnT.style.display = 'none';
+  } catch(e) {}
+}
+
+async function traducirTitulos() {
+  const b = document.getElementById('btn-traducir');
+  b.disabled = true; b.textContent = '🌐 Traduciendo...';
+  showToast('🌐 Traduciendo títulos...');
+  try {
+    const d = await (await fetch('/api/ia/traducir_titulos', { method: 'POST' })).json();
+    if (d.ok) { showToast(`✅ ${d.traducidos} traducido(s).`); await Promise.all([loadDocs(), checkIaEstado()]); }
+    else { showToast('⚠️ ' + (d.error||'error')); b.disabled = false; }
+  } catch(e) { showToast('⚠️ Sin conexión.'); b.disabled = false; }
+}
+
+async function analizarUno(docId, btnEl) {
+  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = '🤖 Analizando...';
+  showToast('🤖 Resumiendo con IA...');
+  try {
+    const d = await (await fetch('/api/ia/analizar/'+encodeURIComponent(docId), {method:'POST'})).json();
+    if (d.ok) { showToast('✅ Resumen IA listo.'); await Promise.all([loadDocs(), loadStats(), checkIaEstado()]); }
+    else { showToast('⚠️ '+(d.error||'error')); btnEl.disabled=false; btnEl.innerHTML=o; }
+  } catch(e) { showToast('⚠️ Sin conexión.'); btnEl.disabled=false; btnEl.innerHTML=o; }
+}
+
+async function analizarPendientes() {
+  const b = document.getElementById('btn-ia');
+  b.disabled = true; b.textContent = '🤖 Analizando...';
+  showToast('🤖 Analizando pendientes...');
+  try {
+    const d = await (await fetch('/api/ia/analizar_pendientes', {method:'POST'})).json();
+    if (d.ok) {
+      let m = `✅ ${d.analizados} analizado(s).`;
+      if (d.restantes>0) m += ` Quedan ${d.restantes}.`;
+      showToast(m);
+      await Promise.all([loadDocs(), loadStats(), checkIaEstado()]);
+    } else showToast('⚠️ '+(d.error||'error'));
+  } catch(e) { showToast('⚠️ Sin conexión.'); }
+  b.disabled = false; checkIaEstado();
+}
+
+async function generarInforme(docId, btnEl) {
+  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = '📄 Generando...';
+  showToast('📄 Generando informe PDF...');
+  try {
+    const d = await (await fetch('/api/informe/'+encodeURIComponent(docId)+'/generar', {method:'POST'})).json();
+    if (d.ok) {
+      showToast('✅ Informe listo. Descargando...');
+      window.location = d.url_descarga;
+      btnEl.innerHTML='📄 Descargar informe PDF'; btnEl.disabled=false;
+    } else { showToast('⚠️ '+(d.error||'error')); btnEl.innerHTML=o; btnEl.disabled=false; }
+  } catch(e) { showToast('⚠️ Sin conexión.'); btnEl.innerHTML=o; btnEl.disabled=false; }
+}
+
+function clearFilters() {
+  ['search-input','filter-categoria','filter-pais','filter-confianza','filter-verificado','filter-desde','filter-hasta'].forEach(id => document.getElementById(id).value = '');
+  loadDocs();
+}
+
+function showToast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 4000); }
+function escHtml(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s) { if (!s) return '#'; if (!/^https?:\/\//i.test(s)) return '#'; return String(s).replace(/"/g,'&quot;'); }
+
+(async function() {
+  await Promise.all([loadDocs(), loadStats(), loadLog(), checkIaEstado()]);
+  setInterval(() => { loadStats(); loadLog(); checkIaEstado(); }, 300000);
+})();
+</script>
+</body>
+</html>

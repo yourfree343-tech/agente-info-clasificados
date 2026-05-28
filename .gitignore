@@ -1,0 +1,38 @@
+# --- Datos generados por el programa (locales, no subir) ---
+data/
+*.db
+*.db-journal
+
+# --- Configuración local con secretos ---
+# Si prefieres no subir tu config.py con la clave, descoméntalo y crea config.example.py
+# config.py
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# --- IDE / editores ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.claude/
+
+# --- Sistema operativo ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs ---
+*.log
