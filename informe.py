@@ -28,6 +28,7 @@ from reportlab.lib.utils import ImageReader
 import config
 import database
 import gemini
+import llm
 
 log = logging.getLogger(__name__)
 
@@ -250,8 +251,8 @@ def generar_informe(doc_id, forzar=False):
     if not doc:
         return {"ok": False, "error": "Documento no encontrado."}
 
-    if not gemini.hay_clave():
-        return {"ok": False, "error": "No hay clave de Gemini configurada en config.py."}
+    if not llm.disponible():
+        return {"ok": False, "error": f"El motor IA ({llm.backend()}) no está disponible."}
 
     ruta = os.path.join(INFORMES_DIR, f"{doc_id}.pdf")
     if os.path.exists(ruta) and not forzar:
@@ -260,8 +261,8 @@ def generar_informe(doc_id, forzar=False):
     # 1) Descargar el contenido una sola vez
     tipo, dato, url = gemini.obtener_contenido(doc)
 
-    # 2) Análisis detallado con Gemini
-    analisis = gemini.analizar_detallado(doc, tipo, dato, url)
+    # 2) Análisis detallado con el motor IA activo (Gemini visión o LM Studio texto)
+    analisis = llm.analizar_detallado(doc, tipo, dato, url)
     if not analisis.get("ok"):
         return {"ok": False, "error": analisis.get("error", "Fallo en el análisis.")}
     database.save_analisis_detallado(doc_id, analisis)
@@ -299,9 +300,9 @@ def _es_error_cuota(msg):
 
 def generar_informes_pendientes(max_por_ciclo=None):
     """Genera los informes que falten, hasta max_por_ciclo. Si se agota la cuota
-       de Gemini, se detiene y se reanudará en el siguiente ciclo."""
-    if not gemini.hay_clave():
-        return {"ok": False, "error": "Sin clave de Gemini.", "generados": 0}
+       del motor IA (Gemini), se detiene y se reanudará en el siguiente ciclo."""
+    if not llm.disponible():
+        return {"ok": False, "error": f"Motor IA ({llm.backend()}) no disponible.", "generados": 0}
 
     if max_por_ciclo is None:
         max_por_ciclo = getattr(config, "INFORMES_BATCH", 3)

@@ -67,8 +67,8 @@ def api_actualizar():
 @app.route("/api/ia/estado")
 def api_ia_estado():
     return jsonify({
-        "configurada": gemini.hay_clave(),
-        "modelo": config.GEMINI_MODEL,
+        "configurada": llm.disponible(),
+        "modelo": llm.nombre_motor(),
         "pendientes": database.count_pending_analysis(),
         "titulos_pendientes": database.count_titulos_pendientes(),
         "informes_pendientes": len(informe.listar_pendientes()),
@@ -77,12 +77,12 @@ def api_ia_estado():
 
 @app.route("/api/ia/traducir_titulos", methods=["POST"])
 def api_ia_traducir_titulos():
-    if not gemini.hay_clave():
-        return jsonify({"ok": False, "error": "No hay clave de Gemini configurada en config.py."}), 400
+    if not llm.disponible():
+        return jsonify({"ok": False, "error": f"El motor IA ({llm.backend()}) no está disponible."}), 400
     pendientes = database.get_titulos_pendientes()
     if not pendientes:
         return jsonify({"ok": True, "traducidos": 0, "restantes": 0})
-    res = gemini.traducir_titulos(pendientes)
+    res = llm.traducir_titulos(pendientes)
     for doc_id, titulo_es in res.get("traducciones", {}).items():
         database.set_titulo(doc_id, titulo_es)
     return jsonify({
@@ -98,7 +98,7 @@ def api_ia_analizar(doc_id):
     doc = database.get_document(doc_id)
     if not doc:
         return jsonify({"ok": False, "error": "Documento no encontrado."}), 404
-    res = gemini.analizar_documento(doc)
+    res = llm.analizar_documento(doc)
     if not res.get("ok"):
         return jsonify(res), 400
     database.update_analysis(
@@ -110,12 +110,12 @@ def api_ia_analizar(doc_id):
 
 @app.route("/api/ia/analizar_pendientes", methods=["POST"])
 def api_ia_analizar_pendientes():
-    if not gemini.hay_clave():
-        return jsonify({"ok": False, "error": "No hay clave de Gemini configurada en config.py."}), 400
+    if not llm.disponible():
+        return jsonify({"ok": False, "error": f"El motor IA ({llm.backend()}) no está disponible."}), 400
     docs = database.get_pending_analysis(limit=config.ANALYZE_BATCH)
     analizados, errores = 0, []
     for doc in docs:
-        res = gemini.analizar_documento(doc)
+        res = llm.analizar_documento(doc)
         if res.get("ok"):
             database.update_analysis(
                 doc["id"], res["resumen_ejecutivo"], res["puntos_clave"],

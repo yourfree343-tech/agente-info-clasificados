@@ -302,14 +302,17 @@ def init_db():
             nivel_certeza TEXT,
             fuentes TEXT,
             motor TEXT,
-            imagenes TEXT
+            imagenes TEXT,
+            categoria TEXT
         )
     """)
-    # Migración: añadir 'imagenes' si la tabla ya existía sin esa columna
+    # Migración: añadir columnas nuevas si la tabla ya existía sin ellas
     c.execute("PRAGMA table_info(investigaciones)")
     cols_inv = {r["name"] for r in c.fetchall()}
     if "imagenes" not in cols_inv:
         c.execute("ALTER TABLE investigaciones ADD COLUMN imagenes TEXT")
+    if "categoria" not in cols_inv:
+        c.execute("ALTER TABLE investigaciones ADD COLUMN categoria TEXT")
     conn.commit()
     _migrate(conn)
     conn.close()
@@ -587,8 +590,8 @@ def insert_investigacion(inv):
     conn.execute("""
         INSERT OR REPLACE INTO investigaciones
         (id, fecha, tema, titulo, gancho, hechos_verificados, hipotesis,
-         especulacion, conexiones, veredicto, nivel_certeza, fuentes, motor, imagenes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         especulacion, conexiones, veredicto, nivel_certeza, fuentes, motor, imagenes, categoria)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         inv["id"], inv.get("fecha", ""), inv.get("tema", ""), inv.get("titulo", ""),
         inv.get("gancho", ""),
@@ -600,9 +603,20 @@ def insert_investigacion(inv):
         json.dumps(inv.get("fuentes", []), ensure_ascii=False),
         inv.get("motor", ""),
         json.dumps(inv.get("imagenes", []), ensure_ascii=False),
+        inv.get("categoria", ""),
     ))
     conn.commit()
     conn.close()
+
+
+def get_temas_investigados(limit=40):
+    """Títulos/temas ya investigados, para que el detective no repita."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT tema FROM investigaciones ORDER BY fecha DESC LIMIT ?", (limit,))
+    temas = [r["tema"] for r in c.fetchall() if r["tema"]]
+    conn.close()
+    return temas
 
 
 def get_investigaciones():

@@ -259,6 +259,33 @@ def _parts_desde_contenido(tipo, dato, prompt):
     return [{"text": prompt}]
 
 
+def extraer_texto_pdf(pdf_bytes, max_chars=14000):
+    """Extrae el texto de un PDF (para motores LLM sin visión, como LM Studio).
+       Devuelve '' si no se puede o el PDF es escaneado sin capa de texto."""
+    if not HAS_FITZ:
+        return ""
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception:
+        return ""
+    trozos = []
+    total = 0
+    try:
+        for page in doc:
+            t = page.get_text("text")
+            if t:
+                trozos.append(t)
+                total += len(t)
+            if total >= max_chars:
+                break
+    except Exception:
+        pass
+    finally:
+        doc.close()
+    texto = re.sub(r"\s+\n", "\n", "\n".join(trozos)).strip()
+    return texto[:max_chars]
+
+
 def _recortar_pdf(pdf_bytes):
     """Reduce un PDF grande a sus primeras páginas hasta que quepa en el límite seguro.
        Devuelve los bytes recortados, o None si no se puede.

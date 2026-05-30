@@ -59,6 +59,37 @@ DETECTIVE_MAX_BUSQUEDAS = 5
 DETECTIVE_RESULTADOS_POR_BUSQUEDA = 5
 DETECTIVE_IMAGENES = 4           # imágenes a recopilar por dossier (portadas, fotos, etc.)
 
+# Banco de temas "semilla" que el detective usa como inspiración (rota y no repite).
+# Puedes añadir, quitar o editar los que quieras.
+DETECTIVE_TEMAS_SEMILLA = [
+    "Portadas de la revista The Economist (The World Ahead) y supuestas predicciones",
+    "Illuminati y simbolismo en la industria musical y de Hollywood",
+    "Masonería y los símbolos en el billete de un dólar y en Washington D.C.",
+    "Grupo Bilderberg y sus reuniones secretas",
+    "El Club Bohemian Grove y sus rituales",
+    "Project Stargate y los experimentos de visión remota de la CIA",
+    "MK-Ultra y el control mental de la CIA",
+    "Área 51 y la ingeniería inversa de tecnología no humana",
+    "Roswell 1947 y el encubrimiento del incidente OVNI",
+    "OVNIs/UAP y las audiencias del Congreso de EE. UU. (2023-2026)",
+    "Operación Mockingbird y la infiltración de la CIA en los medios",
+    "COINTELPRO y la vigilancia del FBI a activistas",
+    "Operación Northwoods y las operaciones de falsa bandera",
+    "Operación Paperclip y los científicos nazis en EE. UU.",
+    "El asesinato de JFK y las teorías sobre la CIA",
+    "Denver International Airport y sus murales apocalípticos",
+    "HAARP y el supuesto control del clima",
+    "Las élites tecnológicas y los búnkeres de supervivencia",
+    "El Vaticano, los archivos secretos y las sociedades religiosas",
+    "Chemtrails y la teoría de la fumigación aérea",
+]
+
+# Categorías para clasificar cada dossier del detective.
+DETECTIVE_CATEGORIAS = [
+    "OVNIs / UAP", "Sociedades secretas", "Control mental", "Operaciones encubiertas",
+    "Símbolos y élites", "Vigilancia masiva", "Falsa bandera", "Encubrimientos", "Otras",
+]
+
 # --- Actualización automática diaria ---
 AUTO_UPDATE_ENABLED = True
 UPDATE_HOUR = 6          # hora (0-23) a la que se busca cada día
@@ -128,6 +159,22 @@ ARCHIVE_ORG_ITEMS = [
     ("Operación Paperclip",
      "operation-paperclip",
      ["Seguridad y defensa", "Ciencia y tecnología militar"], "EE. UU.", "Media", 1),
+
+    ("Colección OVNI completa de la CIA",
+     "CIAUFO",
+     ["Inteligencia y espionaje", "Ciencia y tecnología militar", "Otras"], "EE. UU.", "Media", 15),
+
+    ("Comité Church — Abusos de CIA/FBI/NSA",
+     "ChurchCommittee",
+     ["Inteligencia y espionaje", "Corrupción y gobernanza", "Derechos humanos"], "EE. UU.", "Media", 14),
+
+    ("COINTELPRO — FBI contra Martin Luther King",
+     "FBI-Neutralize-King",
+     ["Inteligencia y espionaje", "Derechos humanos", "Corrupción y gobernanza"], "EE. UU.", "Media", 9),
+
+    ("Informe Roswell (USAF) — Caso Cerrado",
+     "roswellreportcas0000mcan",
+     ["Ciencia y tecnología militar", "Otras"], "EE. UU.", "Media", 2),
 ]
 
 # --- Filtros de calidad para el ingestor ---

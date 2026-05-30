@@ -303,25 +303,25 @@ def run_update():
     # Traducción automática de títulos al español (una sola llamada para todos)
     if total_nuevos > 0:
         try:
-            import gemini
-            if gemini.hay_clave():
+            import llm
+            if llm.disponible():
                 pendientes = database.get_titulos_pendientes()
-                res = gemini.traducir_titulos(pendientes)
+                res = llm.traducir_titulos(pendientes)
                 for doc_id, titulo_es in res.get("traducciones", {}).items():
                     database.set_titulo(doc_id, titulo_es)
                 log.info(f"  Títulos traducidos al español: {len(res.get('traducciones', {}))}")
         except Exception as e:
             log.error(f"  Error traduciendo títulos: {e}")
 
-    # Análisis automático con IA de los documentos pendientes (si está activado y hay clave)
+    # Análisis automático con IA de los documentos pendientes (si el motor está disponible)
     if config.AUTO_ANALYZE_NEW and total_nuevos > 0:
         try:
-            import gemini
-            if gemini.hay_clave():
+            import llm
+            if llm.disponible():
                 pendientes = database.get_pending_analysis(limit=config.ANALYZE_BATCH)
                 analizados = 0
                 for doc in pendientes:
-                    res = gemini.analizar_documento(doc)
+                    res = llm.analizar_documento(doc)
                     if res.get("ok"):
                         database.update_analysis(
                             doc["id"], res["resumen_ejecutivo"], res["puntos_clave"],
@@ -329,12 +329,12 @@ def run_update():
                         )
                         analizados += 1
                 log.info(f"  IA: {analizados} documento(s) resumido(s) automáticamente.")
-                database.log_update("Gemini (auto-análisis)", len(pendientes), analizados, "OK")
+                database.log_update(f"IA auto-análisis ({llm.backend()})", len(pendientes), analizados, "OK")
             else:
-                log.info("  IA: sin clave configurada; se omite el resumen automático.")
+                log.info("  IA: motor no disponible; se omite el resumen automático.")
         except Exception as e:
             log.error(f"  Error en auto-análisis IA: {e}")
-            database.log_update("Gemini (auto-análisis)", 0, 0, "ERROR", str(e)[:200])
+            database.log_update("IA auto-análisis", 0, 0, "ERROR", str(e)[:200])
 
     return total_nuevos
 

@@ -13,6 +13,7 @@ Motor LLM intercambiable (Gemini / LM Studio) vía llm.py.
 
 import re
 import html
+import random
 import logging
 from datetime import datetime
 
@@ -77,15 +78,18 @@ def _limpia(s):
 # Prompts
 # ---------------------------------------------------------------------------
 
-PROMPT_TEMA = """Estamos en el AÑO 2026. Eres un detective conspiranoico autónomo. Elige UN tema
-intrigante y ACTUAL para investigar hoy: conspiraciones, documentos desclasificados
-recientes, símbolos, élites, OVNIs/UAP, sociedades secretas (Illuminati, masonería),
-portadas de la revista The Economist (especialmente The World Ahead 2026),
-operaciones encubiertas, MK-Ultra, Project Stargate, etc. Varía el tema, sé original
-y prefiere asuntos recientes (2024-2026) cuando proceda.
+PROMPT_TEMA = """Estamos en el AÑO 2026. Eres un detective conspiranoico autónomo.
+
+INSPIRACIÓN (puedes usar este tema o uno relacionado): {semilla}
+
+NO repitas ninguno de estos temas que YA has investigado:
+{ya_investigados}
+
+Elige UN tema intrigante para investigar hoy. Varía respecto a lo ya hecho, sé original
+y prefiere ángulos recientes (2024-2026) cuando proceda.
 
 Devuelve EXCLUSIVAMENTE este JSON:
-{"tema": "el tema elegido en una frase", "busquedas": ["3 a 5 consultas de búsqueda en internet para investigarlo (incluye el año 2026 si es relevante)"]}"""
+{{"tema": "el tema elegido en una frase", "busquedas": ["3 a 5 consultas de búsqueda en internet para investigarlo (incluye el año 2026 si es relevante)"]}}"""
 
 PROMPT_DOSSIER = """Estamos en el AÑO 2026. Eres un PANEL de investigación con cuatro roles que colaboran:
 🕵️ Investigador (recopila hechos y fuentes), 👁️ Conspiranoico (propone conexiones e hipótesis),
@@ -103,6 +107,7 @@ No presentes teorías como verdades. No inventes fuentes: usa solo las de arriba
 Devuelve EXCLUSIVAMENTE este JSON:
 {{
   "titulo": "título llamativo del caso",
+  "categoria": "una de: {categorias}",
   "gancho": "1-2 frases de apertura intrigantes",
   "hechos_verificados": ["hechos contrastables, cada uno con su fuente entre paréntesis"],
   "hipotesis": ["teorías y conexiones que propone el conspiranoico"],
@@ -127,10 +132,15 @@ def investigar(tema=None):
     if tema:
         busquedas = [tema, f"{tema} documentos", f"{tema} conspiración"]
     else:
-        r = llm.generar_json(PROMPT_TEMA, temperature=0.95)
+        semillas = getattr(config, "DETECTIVE_TEMAS_SEMILLA", []) or ["una conspiración famosa"]
+        semilla = random.choice(semillas)
+        ya = database.get_temas_investigados(40)
+        ya_txt = "\n".join(f"- {t}" for t in ya) if ya else "(ninguno todavía)"
+        prompt_tema = PROMPT_TEMA.format(semilla=semilla, ya_investigados=ya_txt)
+        r = llm.generar_json(prompt_tema, temperature=0.95)
         if not r.get("ok"):
             return {"ok": False, "error": "No se pudo elegir tema: " + r.get("error", "")}
-        tema = (r["data"].get("tema") or "Misterio sin título").strip()
+        tema = (r["data"].get("tema") or semilla).strip()
         busquedas = r["data"].get("busquedas") or [tema]
 
     # 2) Buscar en internet
@@ -152,12 +162,19 @@ def investigar(tema=None):
     )
 
     # 3) Sintetizar el dossier
-    r2 = llm.generar_json(PROMPT_DOSSIER.format(tema=tema, contexto=contexto), temperature=0.8)
+    categorias = getattr(config, "DETECTIVE_CATEGORIAS", ["Otras"])
+    prompt_dossier = PROMPT_DOSSIER.format(
+        tema=tema, contexto=contexto, categorias=" | ".join(categorias))
+    r2 = llm.generar_json(prompt_dossier, temperature=0.8)
     if not r2.get("ok"):
         return {"ok": False, "error": "No se pudo redactar el dossier: " + r2.get("error", "")}
     d = r2["data"]
     m = re.search(r"ALTO|MEDIO|BAJO", (d.get("nivel_certeza") or "MEDIO").upper())
     certeza = m.group(0) if m else "MEDIO"
+    # Validar categoría contra la lista permitida
+    categoria = (d.get("categoria") or "").strip()
+    if categoria not in categorias:
+        categoria = next((c for c in categorias if c.lower() in categoria.lower()), "Otras")
 
     # Unir fuentes del modelo con las URLs reales encontradas
     fuentes = d.get("fuentes") or []
@@ -187,6 +204,7 @@ def investigar(tema=None):
         "fuentes": fuentes[:25],
         "motor": llm.nombre_motor(),
         "imagenes": imagenes,
+        "categoria": categoria,
     }
     database.insert_investigacion(inv)
     log.info(f"  Detective: nuevo dossier '{inv['titulo'][:50]}' "

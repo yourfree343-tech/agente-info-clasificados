@@ -80,10 +80,12 @@ function render(v) {
       <img src="${escAttr(im.thumb || im.url)}" alt="${escHtml(im.titulo || '')}" loading="lazy" onerror="this.style.display='none'">
       ${im.origen ? `<div class="cap">${escHtml(im.origen)}</div>` : ''}
     </a>`).join('');
+  const cat = v.categoria ? `<span class="inv-cat">🏷 ${escHtml(v.categoria)}</span>` : '';
+  const certClass = 'cert-' + (v.nivel_certeza || 'MEDIO');
   return `
   <div class="inv-card">
     <div class="inv-titulo">📕 ${escHtml(v.titulo || v.tema)}</div>
-    <div class="inv-meta">${escHtml(v.id)} · ${escHtml(fecha)} · certeza: ${escHtml(v.nivel_certeza||'—')} · ${escHtml(v.motor||'')}</div>
+    <div class="inv-meta">${escHtml(v.id)} · ${escHtml(fecha)} · ${cat} <span class="${certClass}">certeza: ${escHtml(v.nivel_certeza||'—')}</span> · ${escHtml(v.motor||'')}</div>
     ${v.gancho ? `<div class="inv-gancho">${escHtml(v.gancho)}</div>` : ''}
     ${imgs ? `<div class="inv-images">${imgs}</div>` : ''}
     <div class="inv-block hechos"><h4>✓ Hechos verificados</h4>${lista(v.hechos_verificados)}</div>
