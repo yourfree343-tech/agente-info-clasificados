@@ -27,10 +27,10 @@
 <div class="container">
 
   <header class="hero">
-    <div class="hero-symbols">👁️ 🔺 🛸 👽 📡 ☢️ 🕳️ 🜏</div>
-    <h1 class="hero-title">ARCHIVOS CLASIFICADOS</h1>
-    <p class="hero-sub">Desclasificados oficiales <b>2026</b> · <b>OVNIs</b> · <b>MK-Ultra</b> · <b>JFK</b> · <b>Stargate</b> · <b>Northwoods</b> · <b>Paperclip</b></p>
-    <div class="stamp">TOP SECRET // DESCLASIFICADO</div>
+    <span class="stamp">Desclasificado</span>
+    <span class="hero-kicker">Archivo de inteligencia · 2026</span>
+    <h1 class="hero-title">Archivos Clasificados</h1>
+    <p class="hero-sub">Documentos desclasificados oficiales — <b>OVNIs</b>, <b>MK-Ultra</b>, <b>JFK</b>, <b>Stargate</b>, <b>Northwoods</b> y <b>Paperclip</b>.</p>
   </header>
 
   <div id="ia-banner" style="display:none; background:rgba(224,179,65,0.10); border:1px solid rgba(224,179,65,0.4); border-radius:6px; padding:14px 18px; margin-bottom:20px; color:var(--text); font-size:13px; line-height:1.6;">
@@ -234,7 +234,7 @@ async function loadStats() {
     document.getElementById('stat-posible').textContent = (s.por_verificacion && s.por_verificacion['Posible']) || 0;
     document.getElementById('stat-paises').textContent = s.por_pais.length;
     const maxCat = Math.max(...s.por_categoria.map(c=>c[1]), 1);
-    const colors = ['#46d160','#e0b341','#bc8cff','#ff4d4d','#2bb6ff','#ff7b72','#6fe089','#f0cf6a'];
+    const colors = ['#d8a24a','#54b98a','#5e9cd6','#9b8cff','#e0655e','#4fb0a5','#e9b964','#cf8a9e'];
     document.getElementById('chart-categorias').innerHTML = s.por_categoria.slice(0,8).map(([cat,n],i)=>`
       <div class="bar-row"><div class="bar-label" title="${escHtml(cat)}">${escHtml(cat)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.round(n/maxCat*100)}%;background:${colors[i%colors.length]}"></div></div>
