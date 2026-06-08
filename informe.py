@@ -14,6 +14,7 @@ import os
 import logging
 from datetime import datetime
 
+import requests
 import fitz  # PyMuPDF
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -145,6 +146,113 @@ def _img_flowable(img_dict, max_ancho=150 * mm):
     except Exception as e:
         log.info(f"  Imagen descartada: {e}")
         return None
+
+
+# ---------------------------------------------------------------------------
+# PDF de un dossier del detective (investigación especulativa)
+# ---------------------------------------------------------------------------
+
+def _descargar_imagen(url, timeout=8):
+    """Descarga una imagen por URL y devuelve sus bytes, o None si falla."""
+    if not url or not url.startswith("http"):
+        return None
+    try:
+        r = requests.get(url, timeout=timeout,
+                         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        r.raise_for_status()
+        ct = r.headers.get("Content-Type", "").lower()
+        path = url.lower().split("?")[0]
+        if "image" in ct or path.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")):
+            return r.content
+    except Exception:
+        return None
+    return None
+
+
+def pdf_investigacion_bytes(inv):
+    """Construye en memoria el PDF de un dossier del detective. Devuelve un BytesIO."""
+    est = _estilos()
+    buf = io.BytesIO()
+    pdf = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=22 * mm, rightMargin=22 * mm, topMargin=20 * mm, bottomMargin=18 * mm,
+        title=f"Dossier — {inv.get('titulo', '')}", author="Agente Info Clasificados",
+    )
+    F = []
+
+    # Cabecera
+    F.append(_p(inv.get("titulo") or inv.get("tema") or "Dossier", est["titulo"]))
+    meta = [b for b in (
+        inv.get("id", ""),
+        (inv.get("fecha", "") or "").replace("T", " ").split(".")[0],
+        inv.get("categoria", ""),
+        ("Certeza: " + inv["nivel_certeza"]) if inv.get("nivel_certeza") else "",
+        inv.get("motor", ""),
+    ) if b]
+    F.append(_p(" · ".join(meta), est["subtitulo"]))
+    F.append(HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#5b3a91"),
+                        spaceBefore=4, spaceAfter=10))
+
+    # Aviso: contenido especulativo
+    F.append(_p("⚠ DOSSIER ESPECULATIVO. Las hipótesis y conexiones NO son hechos probados: "
+                "se incluyen marcadas como tales. Contrasta siempre con las fuentes citadas.",
+                est["aviso"]))
+
+    if inv.get("gancho"):
+        F.append(_p(inv["gancho"], est["cuerpo"]))
+
+    # Imágenes relacionadas (se descargan unas pocas; se omiten si fallan)
+    flows_img = []
+    for im in (inv.get("imagenes") or [])[:3]:
+        b = _descargar_imagen(im.get("thumb") or im.get("url"))
+        if b:
+            fi = _img_flowable({"bytes": b}, max_ancho=120 * mm)
+            if fi:
+                flows_img.append((fi, im.get("origen") or ""))
+    if flows_img:
+        F.append(_p("IMÁGENES RELACIONADAS", est["seccion"]))
+        for fi, origen in flows_img:
+            F.append(fi)
+            if origen:
+                F.append(_p(origen, est["subtitulo"]))
+            F.append(Spacer(1, 8))
+
+    # Secciones del dossier
+    F.append(_p("HECHOS VERIFICADOS", est["seccion"]))
+    F.append(_lista(inv.get("hechos_verificados"), est["vineta"]))
+
+    if inv.get("hipotesis"):
+        F.append(_p("HIPÓTESIS Y CONEXIONES", est["seccion"]))
+        F.append(_lista(inv.get("hipotesis"), est["vineta"]))
+
+    if inv.get("conexiones"):
+        F.append(_p("PATRONES / SÍMBOLOS", est["seccion"]))
+        F.append(_lista(inv.get("conexiones"), est["vineta"]))
+
+    if inv.get("especulacion"):
+        F.append(_p("ESPECULACIÓN (NO PROBADO)", est["seccion"]))
+        F.append(_lista(inv.get("especulacion"), est["vineta"]))
+
+    if inv.get("veredicto"):
+        F.append(_p("VEREDICTO DEL ANALISTA", est["seccion"]))
+        F.append(_p(inv["veredicto"], est["cuerpo"]))
+
+    fuentes = inv.get("fuentes") or []
+    if fuentes:
+        F.append(_p("FUENTES", est["seccion"]))
+        for u in fuentes[:30]:
+            F.append(_p_rich(f'<font size=8>{_esc(u)}</font>', est["meta_v"]))
+
+    # Pie
+    F.append(Spacer(1, 14))
+    F.append(HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#cccccc"), spaceAfter=6))
+    F.append(_p(f"Dossier generado por Agente Info Clasificados · Investigación especulativa · "
+                f"{datetime.now().strftime('%d/%m/%Y %H:%M')} · {inv.get('id', '')}", est["pie"]))
+    F.append(_p("No es una fuente autoritativa: separa hechos de teorías y verifica antes de citar.", est["pie"]))
+
+    pdf.build(F)
+    buf.seek(0)
+    return buf
 
 
 def construir_pdf(doc, analisis, imagenes):

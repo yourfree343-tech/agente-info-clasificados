@@ -637,6 +637,24 @@ def get_investigaciones():
     return result
 
 
+def get_investigacion(inv_id):
+    """Devuelve un dossier por su id (con los campos JSON ya parseados) o None."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM investigaciones WHERE id = ?", (inv_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    for f in _INV_JSON:
+        try:
+            d[f] = json.loads(d.get(f) or "[]")
+        except Exception:
+            d[f] = []
+    return d
+
+
 def count_investigaciones():
     conn = get_connection()
     c = conn.cursor()

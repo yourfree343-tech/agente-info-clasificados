@@ -37,6 +37,25 @@
     <div class="info">El detective investiga solo cada <b><span id="interval-min">—</span></b> min · puedes pulsar el botón para forzar</div>
   </div>
 
+  <div class="detective-controls">
+    <div class="dc-group dc-tema">
+      <input type="text" id="tema-input" placeholder="Investiga un tema concreto… (p. ej. Bohemian Grove 2026)"
+             onkeydown="if(event.key==='Enter') investigarTema()">
+      <button class="btn btn-detective" id="btn-tema" onclick="investigarTema()">🔍 Investigar tema</button>
+    </div>
+    <div class="dc-group dc-filtros">
+      <input type="text" id="inv-search" placeholder="🔎 Filtrar dossiers…" oninput="applyInvFilters()">
+      <select id="inv-cert" onchange="applyInvFilters()">
+        <option value="">Certeza: todas</option>
+        <option value="ALTO">Certeza alta</option>
+        <option value="MEDIO">Certeza media</option>
+        <option value="BAJO">Certeza baja</option>
+      </select>
+      <select id="inv-cat" onchange="applyInvFilters()"><option value="">Categoría: todas</option></select>
+    </div>
+  </div>
+
+  <div class="results-bar"><span id="inv-count">—</span></div>
   <div id="investigaciones-container"><div class="loader"><span class="spinner"></span>Cargando dossiers...</div></div>
 </div>
 
@@ -55,17 +74,60 @@ async function checkEstado() {
   } catch(e) {}
 }
 
+let allInvs = [];
+
 async function loadInvestigaciones() {
   try {
     const r = await fetch('/api/investigaciones');
-    const invs = await r.json();
-    const c = document.getElementById('investigaciones-container');
-    if (!invs.length) {
-      c.innerHTML = '<div class="empty"><div class="icon">🕳️</div><p>Aún no hay dossiers. El detective está investigando en segundo plano — vuelve en un rato, o pulsa "Investigar ahora".</p></div>';
-      return;
-    }
-    c.innerHTML = invs.map(render).join('');
+    allInvs = await r.json();
+    poblarCategorias();
+    renderInvList();
   } catch(e) {}
+}
+
+function poblarCategorias() {
+  const sel = document.getElementById('inv-cat');
+  const actual = sel.value;
+  const cats = [...new Set(allInvs.map(v => v.categoria).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">Categoría: todas</option>' +
+    cats.map(c => `<option value="${escAttr2(c)}">${escHtml(c)}</option>`).join('');
+  sel.value = actual;
+}
+
+function applyInvFilters() { renderInvList(); }
+
+function renderInvList() {
+  const c = document.getElementById('investigaciones-container');
+  const q = (document.getElementById('inv-search').value || '').toLowerCase().trim();
+  const cert = document.getElementById('inv-cert').value;
+  const cat = document.getElementById('inv-cat').value;
+
+  let list = allInvs;
+  if (cert) list = list.filter(v => (v.nivel_certeza || '') === cert);
+  if (cat)  list = list.filter(v => (v.categoria || '') === cat);
+  if (q) {
+    list = list.filter(v => {
+      const hay = [v.titulo, v.tema, v.gancho, v.veredicto,
+        (v.hechos_verificados||[]).join(' '), (v.hipotesis||[]).join(' '),
+        (v.especulacion||[]).join(' '), (v.conexiones||[]).join(' ')
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  const cnt = document.getElementById('inv-count');
+  if (!allInvs.length) {
+    c.innerHTML = '<div class="empty"><div class="icon">🕳️</div><p>Aún no hay dossiers. El detective está investigando en segundo plano — vuelve en un rato, o pulsa "Investigar ahora".</p></div>';
+    cnt.textContent = '';
+    return;
+  }
+  cnt.innerHTML = `<strong>${list.length}</strong> dossier${list.length!==1?'s':''}` +
+    (list.length !== allInvs.length ? ` de ${allInvs.length}` : '');
+  if (!list.length) {
+    c.innerHTML = '<div class="empty"><div class="icon">🔍</div><p>Ningún dossier coincide con el filtro.</p></div>';
+    return;
+  }
+  c.innerHTML = list.map(render).join('');
 }
 
 function lista(arr) {
@@ -94,18 +156,27 @@ function render(v) {
     <div class="inv-block especulacion"><h4>⚠ Especulación (NO probado)</h4>${lista(v.especulacion)}</div>
     <div class="inv-block"><h4 style="color:var(--text)">🧠 Veredicto del analista</h4><div class="inv-veredicto">${escHtml(v.veredicto||'—')}</div></div>
     ${fuentes ? `<div class="inv-fuentes"><strong style="color:var(--muted)">Fuentes:</strong><br>${fuentes}</div>` : ''}
+    <div class="inv-actions">
+      <a class="btn btn-informe" href="/api/investigacion/${encodeURIComponent(v.id)}/pdf">📄 Descargar dossier (PDF)</a>
+    </div>
   </div>`;
 }
 
-async function investigar() {
-  const b = document.getElementById('btn-investigar');
-  b.disabled = true; b.textContent = '🔍 Investigando (~15-20 min en CPU)...';
-  showToast('🕵️ El detective está investigando. Tardará varios minutos con el modelo local.');
+async function investigar(tema) {
+  const nav = document.getElementById('btn-investigar');
+  const tbtn = document.getElementById('btn-tema');
+  nav.disabled = true; if (tbtn) tbtn.disabled = true;
+  nav.textContent = '🔍 Investigando…';
+  showToast(tema
+    ? '🕵️ Investigando: ' + tema + ' — tardará varios minutos con el modelo local.'
+    : '🕵️ El detective está investigando. Tardará varios minutos con el modelo local.');
   try {
-    const r = await fetch('/api/investigar', { method: 'POST' });
+    const url = '/api/investigar' + (tema ? '?tema=' + encodeURIComponent(tema) : '');
+    const r = await fetch(url, { method: 'POST' });
     const d = await r.json();
     if (d.ok) {
       showToast('✅ Nuevo dossier: ' + (d.investigacion?.titulo || 'caso cerrado'));
+      document.getElementById('tema-input').value = '';
       await Promise.all([loadInvestigaciones(), checkEstado()]);
     } else {
       showToast('⚠️ ' + (d.error || 'No se pudo investigar.'));
@@ -113,7 +184,15 @@ async function investigar() {
   } catch(e) {
     showToast('⚠️ No se pudo conectar con el servidor.');
   }
-  b.disabled = false; b.textContent = '🔍 Investigar ahora';
+  nav.disabled = false; nav.textContent = '🔍 Investigar ahora';
+  if (tbtn) { tbtn.disabled = false; tbtn.textContent = '🔍 Investigar tema'; }
+}
+
+function investigarTema() {
+  const t = (document.getElementById('tema-input').value || '').trim();
+  if (!t) { showToast('✍️ Escribe un tema primero.'); return; }
+  document.getElementById('btn-tema').textContent = '🔍 Investigando…';
+  investigar(t);
 }
 
 function showToast(m) {
@@ -123,6 +202,7 @@ function showToast(m) {
 }
 function escHtml(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s) { if (!s) return '#'; if (!/^https?:\/\//i.test(s)) return '#'; return String(s).replace(/"/g,'&quot;'); }
+function escAttr2(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
 
 (async function() {
   await Promise.all([loadInvestigaciones(), checkEstado()]);

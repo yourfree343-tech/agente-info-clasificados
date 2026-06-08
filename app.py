@@ -161,6 +161,19 @@ def api_investigaciones():
     return jsonify(database.get_investigaciones())
 
 
+@app.route("/api/investigacion/<inv_id>/pdf")
+def api_investigacion_pdf(inv_id):
+    inv = database.get_investigacion(inv_id)
+    if not inv:
+        abort(404, description="Dossier no encontrado.")
+    try:
+        buf = informe.pdf_investigacion_bytes(inv)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"No se pudo generar el PDF: {e}"}), 500
+    return send_file(buf, mimetype="application/pdf", as_attachment=True,
+                     download_name=f"dossier_{inv_id}.pdf")
+
+
 @app.route("/api/detective/estado")
 def api_detective_estado():
     return jsonify({

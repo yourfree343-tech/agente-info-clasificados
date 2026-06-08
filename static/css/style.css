@@ -310,6 +310,18 @@ nav {
 .detective-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; padding: 14px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .detective-bar .info { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .detective-bar .info b { color: #c3b8ff; font-weight: 600; }
+.detective-controls { display: flex; gap: 14px; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.dc-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.dc-tema { flex: 1; min-width: 300px; }
+.dc-tema input { flex: 1; min-width: 220px; }
+.detective-controls input, .detective-controls select {
+  background: var(--surface2); border: 1px solid var(--border-2); color: var(--text);
+  border-radius: var(--radius-sm); padding: 8px 12px; font-size: 13px; font-family: var(--sans); min-width: 150px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.detective-controls input::placeholder { color: var(--muted); }
+.detective-controls input:focus, .detective-controls select:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(155,140,255,0.18); }
+.inv-actions { margin-top: 16px; }
 #investigaciones-container { display: flex; flex-direction: column; gap: 16px; }
 .inv-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--violet); border-radius: var(--radius); padding: 22px 24px; transition: border-color 0.16s, box-shadow 0.16s; }
 .inv-card:hover { box-shadow: var(--shadow-sm); }
