@@ -46,6 +46,8 @@ def nombre_motor():
 # ---------------------------------------------------------------------------
 
 def _lmstudio_json(prompt, temperature):
+    """Llama a LM Studio y devuelve el JSON parseado. Da errores claros y, si el
+       modelo local devuelve un JSON roto/truncado, vuelve a generarlo una vez."""
     payload = {
         "model": config.LMSTUDIO_MODEL,
         "messages": [
@@ -54,16 +56,34 @@ def _lmstudio_json(prompt, temperature):
             {"role": "user", "content": prompt},
         ],
         "temperature": temperature,
+        # Margen suficiente para que el dossier no se trunque a mitad del JSON.
+        "max_tokens": getattr(config, "LMSTUDIO_MAX_TOKENS", 2500),
         "stream": False,
         # Desactiva el "pensamiento" de Qwen3 (mucho más rápido en CPU y salida limpia).
         "chat_template_kwargs": {"enable_thinking": False},
     }
-    r = requests.post(f"{config.LMSTUDIO_URL}/chat/completions",
-                      json=payload, timeout=config.LMSTUDIO_TIMEOUT)
-    if r.status_code != 200:
-        raise RuntimeError(f"LM Studio HTTP {r.status_code}: {r.text[:200]}")
-    contenido = r.json()["choices"][0]["message"]["content"]
-    return gemini._parse_json(contenido)
+    # Hasta 2 intentos: el modelo local a veces emite JSON incompleto o con ruido.
+    for intento in range(2):
+        try:
+            r = requests.post(f"{config.LMSTUDIO_URL}/chat/completions",
+                              json=payload, timeout=config.LMSTUDIO_TIMEOUT)
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(f"No se pudo conectar con LM Studio en {config.LMSTUDIO_URL}. "
+                               f"¿Está arrancado el servidor local y cargado el modelo? ({e})")
+        except requests.exceptions.Timeout:
+            raise RuntimeError(f"LM Studio no respondió en {config.LMSTUDIO_TIMEOUT}s. "
+                               f"El modelo es muy lento en CPU; sube LMSTUDIO_TIMEOUT en config.py "
+                               f"o usa un modelo más pequeño/GPU.")
+        if r.status_code != 200:
+            raise RuntimeError(f"LM Studio HTTP {r.status_code}: {r.text[:200]}")
+        contenido = r.json()["choices"][0]["message"]["content"]
+        try:
+            return gemini._parse_json(contenido)
+        except Exception:
+            if intento == 0:
+                log.info("  LM Studio devolvió un JSON no válido; regenerando una vez...")
+                continue
+            raise RuntimeError(f"LM Studio no devolvió un JSON parseable: {(contenido or '')[:200]}")
 
 
 # ---------------------------------------------------------------------------

@@ -35,7 +35,9 @@ LLM_BACKEND = "lmstudio"    # "gemini" o "lmstudio" (tu modelo local sin límite
 # LM Studio (servidor local compatible con OpenAI)
 LMSTUDIO_URL = "http://localhost:1234/v1"
 LMSTUDIO_MODEL = "qwen/qwen3.5-9b"   # modelo cargado en LM Studio
-LMSTUDIO_TIMEOUT = 600   # CPU: los modelos grandes tardan; damos margen amplio
+LMSTUDIO_TIMEOUT = 1800  # CPU: un dossier 9B puede tardar >10 min; margen amplio
+                         # (es solo un techo: una llamada sana devuelve en cuanto acaba)
+LMSTUDIO_MAX_TOKENS = 2500   # tope de salida por llamada (evita dossiers JSON truncados)
 
 # Analizar automáticamente los documentos nuevos al hacer la búsqueda diaria
 # (solo funciona si hay una clave configurada arriba).

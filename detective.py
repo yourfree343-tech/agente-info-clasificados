@@ -13,9 +13,11 @@ Motor LLM intercambiable (Gemini / LM Studio) vía llm.py.
 
 import re
 import html
+import time
 import random
 import logging
 from datetime import datetime
+from urllib.parse import urlparse
 
 import config
 import database
@@ -29,23 +31,30 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def buscar_web(query, n=5):
-    """Devuelve [{titulo, url, snippet}]. Vacío si falla."""
+    """Devuelve [{titulo, url, snippet}]. Vacío si falla.
+       Reintenta una vez ante fallos transitorios (rate-limit de DuckDuckGo)."""
     try:
         from ddgs import DDGS
     except ImportError:
         log.warning("  Falta la librería 'ddgs' (pip install ddgs).")
         return []
-    out = []
-    try:
-        for x in DDGS().text(query, max_results=n):
-            titulo = _limpia(x.get("title", ""))
-            url = x.get("href", "") or x.get("url", "")
-            snippet = _limpia(x.get("body", ""))
-            if titulo and url:
-                out.append({"titulo": titulo, "url": url, "snippet": snippet})
-    except Exception as e:
-        log.warning(f"  Búsqueda fallida '{query}': {e}")
-    return out
+    for intento in range(2):
+        out = []
+        try:
+            for x in DDGS().text(query, max_results=n):
+                titulo = _limpia(x.get("title", ""))
+                url = x.get("href", "") or x.get("url", "")
+                snippet = _limpia(x.get("body", ""))
+                if titulo and url:
+                    out.append({"titulo": titulo, "url": url, "snippet": snippet})
+            return out
+        except Exception as e:
+            if intento == 0:
+                log.info(f"  Búsqueda '{query}' falló ({e}); reintento en 3s...")
+                time.sleep(3)
+                continue
+            log.warning(f"  Búsqueda fallida '{query}': {e}")
+            return []
 
 
 def buscar_imagenes(query, n=4):
@@ -61,6 +70,8 @@ def buscar_imagenes(query, n=4):
             thumb = x.get("thumbnail") or url
             titulo = _limpia(x.get("title", ""))
             origen = _limpia(x.get("source", "") or x.get("hostname", ""))
+            if not origen and url:
+                origen = urlparse(url).netloc  # dominio como pie de imagen
             if url:
                 out.append({"url": url, "thumb": thumb, "titulo": titulo, "origen": origen})
             if len(out) >= n:

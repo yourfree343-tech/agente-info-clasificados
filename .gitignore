@@ -28,6 +28,7 @@ env/
 *.swp
 *.swo
 .claude/
+.mcp.json
 
 # --- Sistema operativo ---
 .DS_Store
