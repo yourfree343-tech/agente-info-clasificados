@@ -18,6 +18,9 @@ import detective
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 app = Flask(__name__)
+# Fuerza al navegador a revalidar los archivos estáticos (CSS/JS): así un cambio
+# de estilo se ve enseguida sin tener que vaciar la caché a mano.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
 
 @app.route("/")
