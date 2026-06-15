@@ -179,6 +179,7 @@ def api_investigacion_pdf(inv_id):
 
 @app.route("/api/detective/estado")
 def api_detective_estado():
+    est = detective.estado_actual()
     return jsonify({
         "habilitado": getattr(config, "DETECTIVE_ENABLED", False),
         "auto": getattr(config, "DETECTIVE_AUTO", False),
@@ -186,18 +187,27 @@ def api_detective_estado():
         "motor": llm.nombre_motor(),
         "motor_disponible": llm.disponible(),
         "total": database.count_investigaciones(),
+        "en_curso": est["en_curso"],
+        "ultimo_titulo": est["ultimo_titulo"],
+        "ultimo_error": est["ultimo_error"],
     })
 
 
 @app.route("/api/investigar", methods=["POST"])
 def api_investigar():
+    # Arranca la investigación EN SEGUNDO PLANO y responde al instante: el modelo
+    # local tarda minutos y dejar la petición HTTP abierta colgaría el navegador.
+    # La página consulta /api/detective/estado para saber cuándo termina.
     if not getattr(config, "DETECTIVE_ENABLED", False):
         return jsonify({"ok": False, "error": "El detective está desactivado en config.py."}), 400
+    if not llm.disponible():
+        return jsonify({"ok": False, "error": f"El motor LLM ({llm.backend()}) no está disponible. "
+                        "Abre LM Studio, carga un modelo y arranca el servidor local."}), 400
     tema = (request.args.get("tema") or "").strip() or None
-    res = detective.investigar(tema)
-    if not res.get("ok"):
-        return jsonify(res), 400
-    return jsonify(res)
+    iniciada, msg = detective.lanzar(tema)
+    if not iniciada:
+        return jsonify({"ok": False, "error": msg, "en_curso": True}), 409
+    return jsonify({"ok": True, "iniciada": True, "mensaje": msg})
 
 
 @app.route("/api/health")

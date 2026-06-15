@@ -39,8 +39,16 @@ BROWSER_HEADERS = {
     "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
 }
 
-MAX_PDF_BYTES = 18 * 1024 * 1024   # límite razonable para enviar el PDF inline
 MAX_TEXT_CHARS = 12000
+
+# Prompt único para traducir títulos (lo comparten el motor Gemini y LM Studio).
+PROMPT_TRADUCIR = (
+    "Traduce al ESPAÑOL natural y claro los siguientes títulos de documentos "
+    "desclasificados. Mantén nombres propios, siglas y números tal cual. "
+    "No traduzcas códigos ni identificadores. Devuelve EXCLUSIVAMENTE este JSON:\n"
+    '{"traducciones": [{"id": "...", "titulo_es": "..."}]}\n\n'
+    "TÍTULOS (formato: ID ||| título):\n"
+)
 
 PROMPT = """Eres un analista de documentos desclasificados. Te doy información de un documento
 oficial (título, fuente y, si está disponible, su contenido). Redacta un análisis en
@@ -115,13 +123,7 @@ def traducir_titulos(items, lote=20):
     for i in range(0, len(items), lote):
         trozo = items[i:i + lote]
         lineas = "\n".join(f'{it["id"]} ||| {it["titulo"]}' for it in trozo)
-        prompt = (
-            "Traduce al ESPAÑOL natural y claro los siguientes títulos de documentos "
-            "desclasificados. Mantén nombres propios, siglas y números tal cual. "
-            "No traduzcas códigos ni identificadores. Devuelve EXCLUSIVAMENTE este JSON:\n"
-            '{"traducciones": [{"id": "...", "titulo_es": "..."}]}\n\n'
-            "TÍTULOS (formato: ID ||| título):\n" + lineas
-        )
+        prompt = PROMPT_TRADUCIR + lineas
         try:
             raw = _llamar_gemini([{"text": prompt}])
             parsed = _parse_json(raw)

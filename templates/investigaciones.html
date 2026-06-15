@@ -62,6 +62,8 @@
 <div class="toast" id="toast"></div>
 
 <script>
+let polling = false;
+
 async function checkEstado() {
   try {
     const r = await fetch('/api/detective/estado');
@@ -70,8 +72,40 @@ async function checkEstado() {
     document.getElementById('total-inv').textContent = e.total || 0;
     document.getElementById('auto-mode').textContent = e.auto ? 'sí (' + (e.interval_min||'—') + ' min)' : 'no';
     document.getElementById('interval-min').textContent = e.interval_min || '—';
-    document.getElementById('detective-status').textContent = e.motor_disponible ? '🟢 motor activo' : '🔴 motor no disponible';
-  } catch(e) {}
+    document.getElementById('detective-status').textContent =
+      e.en_curso ? '🟠 investigando…'
+                 : (e.motor_disponible ? '🟢 motor activo' : '🔴 motor no disponible');
+    // Si hay una investigación en marcha (p. ej. la automática), refléjalo y vigílala.
+    if (e.en_curso) { setBusy(true); pollDetective(); }
+    return e;
+  } catch(e) { return null; }
+}
+
+function setBusy(busy) {
+  const nav = document.getElementById('btn-investigar');
+  const tbtn = document.getElementById('btn-tema');
+  if (nav) { nav.disabled = busy; nav.textContent = busy ? '🔍 Investigando…' : '🔍 Investigar ahora'; }
+  if (tbtn) { tbtn.disabled = busy; tbtn.textContent = busy ? '🔍 Investigando…' : '🔍 Investigar tema'; }
+}
+
+// Vigila el estado cada 5 s hasta que la investigación en curso termine.
+function pollDetective() {
+  if (polling) return;
+  polling = true;
+  const tick = async () => {
+    let e = null;
+    try { e = await (await fetch('/api/detective/estado')).json(); } catch(_) {}
+    if (e && !e.en_curso) {
+      polling = false;
+      setBusy(false);
+      await loadInvestigaciones();
+      if (e.ultimo_error) showToast('⚠️ ' + e.ultimo_error);
+      else showToast('✅ Nuevo dossier: ' + (e.ultimo_titulo || 'caso cerrado'));
+      return;
+    }
+    setTimeout(tick, 5000);
+  };
+  setTimeout(tick, 5000);
 }
 
 let allInvs = [];
@@ -163,10 +197,7 @@ function render(v) {
 }
 
 async function investigar(tema) {
-  const nav = document.getElementById('btn-investigar');
-  const tbtn = document.getElementById('btn-tema');
-  nav.disabled = true; if (tbtn) tbtn.disabled = true;
-  nav.textContent = '🔍 Investigando…';
+  setBusy(true);
   showToast(tema
     ? '🕵️ Investigando: ' + tema + ' — tardará varios minutos con el modelo local.'
     : '🕵️ El detective está investigando. Tardará varios minutos con el modelo local.');
@@ -174,24 +205,23 @@ async function investigar(tema) {
     const url = '/api/investigar' + (tema ? '?tema=' + encodeURIComponent(tema) : '');
     const r = await fetch(url, { method: 'POST' });
     const d = await r.json();
-    if (d.ok) {
-      showToast('✅ Nuevo dossier: ' + (d.investigacion?.titulo || 'caso cerrado'));
-      document.getElementById('tema-input').value = '';
-      await Promise.all([loadInvestigaciones(), checkEstado()]);
-    } else {
+    // d.ok = iniciada; 409 con en_curso = ya estaba corriendo (también la vigilamos).
+    if (!d.ok && !d.en_curso) {
       showToast('⚠️ ' + (d.error || 'No se pudo investigar.'));
+      setBusy(false);
+      return;
     }
+    document.getElementById('tema-input').value = '';
+    pollDetective();   // el dossier aparecerá cuando el modelo termine
   } catch(e) {
     showToast('⚠️ No se pudo conectar con el servidor.');
+    setBusy(false);
   }
-  nav.disabled = false; nav.textContent = '🔍 Investigar ahora';
-  if (tbtn) { tbtn.disabled = false; tbtn.textContent = '🔍 Investigar tema'; }
 }
 
 function investigarTema() {
   const t = (document.getElementById('tema-input').value || '').trim();
   if (!t) { showToast('✍️ Escribe un tema primero.'); return; }
-  document.getElementById('btn-tema').textContent = '🔍 Investigando…';
   investigar(t);
 }
 

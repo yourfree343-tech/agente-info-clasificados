@@ -16,6 +16,7 @@ import html
 import time
 import random
 import logging
+import threading
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -89,19 +90,6 @@ def _limpia(s):
 # Prompts
 # ---------------------------------------------------------------------------
 
-PROMPT_TEMA = """Estamos en el AÑO 2026. Eres un detective conspiranoico autónomo.
-
-INSPIRACIÓN (puedes usar este tema o uno relacionado): {semilla}
-
-NO repitas ninguno de estos temas que YA has investigado:
-{ya_investigados}
-
-Elige UN tema intrigante para investigar hoy. Varía respecto a lo ya hecho, sé original
-y prefiere ángulos recientes (2024-2026) cuando proceda.
-
-Devuelve EXCLUSIVAMENTE este JSON:
-{{"tema": "el tema elegido en una frase", "busquedas": ["3 a 5 consultas de búsqueda en internet para investigarlo (incluye el año 2026 si es relevante)"]}}"""
-
 PROMPT_DOSSIER = """Estamos en el AÑO 2026. Eres un PANEL de investigación con cuatro roles que colaboran:
 🕵️ Investigador (recopila hechos y fuentes), 👁️ Conspiranoico (propone conexiones e hipótesis),
 🧠 Analista (separa lo PROBADO de lo ESPECULATIVO) y 📕 Detective Jefe (concluye).
@@ -131,6 +119,36 @@ Devuelve EXCLUSIVAMENTE este JSON:
 
 
 # ---------------------------------------------------------------------------
+# Elección de tema (sin LLM)
+# ---------------------------------------------------------------------------
+
+def _busquedas_desde_tema(tema):
+    """Deriva 3-4 consultas de búsqueda a partir de un tema, sin usar el LLM."""
+    base = (tema or "").strip()
+    # Foco corto: corta por el primer conector para quedarse con el núcleo del tema.
+    corto = re.split(r"\s+y\s+|\s+—\s+|:|,|\(", base, maxsplit=1)[0].strip() or base
+    consultas = [base, f"{corto} documentos desclasificados",
+                 f"{corto} evidencia 2026", f"{corto} investigación"]
+    vistas, out = set(), []
+    for q in consultas:
+        q = q.strip()
+        if q and q.lower() not in vistas:
+            vistas.add(q.lower())
+            out.append(q)
+    return out
+
+
+def _elegir_tema_local():
+    """Elige un tema del banco semilla, prefiriendo los que aún no se han usado.
+       Sustituye a la antigua llamada al LLM para 'elegir tema' (lenta y frágil en CPU)."""
+    semillas = getattr(config, "DETECTIVE_TEMAS_SEMILLA", []) or ["una conspiración famosa"]
+    ya = {(t or "").strip().lower() for t in database.get_temas_investigados(40)}
+    frescas = [s for s in semillas if s.strip().lower() not in ya]
+    tema = random.choice(frescas or semillas)
+    return tema, _busquedas_desde_tema(tema)
+
+
+# ---------------------------------------------------------------------------
 # Investigación
 # ---------------------------------------------------------------------------
 
@@ -139,20 +157,13 @@ def investigar(tema=None):
         return {"ok": False, "error": f"El motor LLM ({llm.backend()}) no está disponible. "
                 f"Si usas LM Studio, abre la app, carga un modelo y arranca el servidor local."}
 
-    # 1) Elegir tema y consultas (si no se da tema)
+    # 1) Elegir tema y consultas. Antes esto gastaba una llamada extra al LLM
+    #    (lenta en CPU y un punto de fallo más); ahora se deriva del banco de
+    #    temas semilla, que ya da variedad y evita repetir lo ya investigado.
     if tema:
-        busquedas = [tema, f"{tema} documentos", f"{tema} conspiración"]
+        busquedas = _busquedas_desde_tema(tema)
     else:
-        semillas = getattr(config, "DETECTIVE_TEMAS_SEMILLA", []) or ["una conspiración famosa"]
-        semilla = random.choice(semillas)
-        ya = database.get_temas_investigados(40)
-        ya_txt = "\n".join(f"- {t}" for t in ya) if ya else "(ninguno todavía)"
-        prompt_tema = PROMPT_TEMA.format(semilla=semilla, ya_investigados=ya_txt)
-        r = llm.generar_json(prompt_tema, temperature=0.95)
-        if not r.get("ok"):
-            return {"ok": False, "error": "No se pudo elegir tema: " + r.get("error", "")}
-        tema = (r["data"].get("tema") or semilla).strip()
-        busquedas = r["data"].get("busquedas") or [tema]
+        tema, busquedas = _elegir_tema_local()
 
     # 2) Buscar en internet
     busquedas = busquedas[:config.DETECTIVE_MAX_BUSQUEDAS]
@@ -180,8 +191,7 @@ def investigar(tema=None):
     if not r2.get("ok"):
         return {"ok": False, "error": "No se pudo redactar el dossier: " + r2.get("error", "")}
     d = r2["data"]
-    m = re.search(r"ALTO|MEDIO|BAJO", (d.get("nivel_certeza") or "MEDIO").upper())
-    certeza = m.group(0) if m else "MEDIO"
+    certeza = llm.norm_nivel(d.get("nivel_certeza"), "MEDIO")
     # Validar categoría contra la lista permitida
     categoria = (d.get("categoria") or "").strip()
     if categoria not in categorias:
@@ -223,11 +233,63 @@ def investigar(tema=None):
     return {"ok": True, "investigacion": inv}
 
 
-def investigar_auto():
-    """Entrada para el planificador (investiga solo, captura errores)."""
+# ---------------------------------------------------------------------------
+# Ejecución en segundo plano
+#
+# Un único cerrojo compartido por el botón "Investigar ahora" y el planificador
+# automático: así NUNCA corren dos investigaciones a la vez contra el mismo
+# modelo local (en CPU eso las arrastraría a ambas). `lanzar()` no bloquea: deja
+# la investigación en un hilo y devuelve enseguida, para que la petición HTTP no
+# se quede colgada los minutos que tarda el modelo.
+# ---------------------------------------------------------------------------
+
+_lock = threading.Lock()
+_estado = {
+    "en_curso": False,
+    "tema": None,
+    "desde": None,
+    "ultimo_fin": None,
+    "ultimo_titulo": None,
+    "ultimo_error": None,
+}
+
+
+def estado_actual():
+    """Copia del estado de la investigación en segundo plano (para la API/UI)."""
+    return dict(_estado)
+
+
+def _run(tema):
     try:
-        res = investigar()
-        if not res.get("ok"):
-            log.info(f"  Detective auto: {res.get('error')}")
+        res = investigar(tema)
+        if res.get("ok"):
+            _estado["ultimo_titulo"] = res["investigacion"].get("titulo")
+            _estado["ultimo_error"] = None
+        else:
+            _estado["ultimo_error"] = res.get("error")
+            log.info(f"  Detective: {res.get('error')}")
     except Exception as e:
-        log.error(f"  Detective auto error: {e}")
+        _estado["ultimo_error"] = str(e)
+        log.error(f"  Detective error: {e}")
+    finally:
+        _estado["en_curso"] = False
+        _estado["ultimo_fin"] = datetime.now().isoformat()
+        _lock.release()
+
+
+def lanzar(tema=None):
+    """Inicia una investigación en segundo plano si no hay otra en curso.
+       Devuelve (iniciada: bool, mensaje: str). NO bloquea."""
+    if not _lock.acquire(blocking=False):
+        return False, "Ya hay una investigación en curso; espera a que termine."
+    _estado.update(en_curso=True, tema=tema, desde=datetime.now().isoformat(),
+                   ultimo_error=None)
+    threading.Thread(target=_run, args=(tema,), daemon=True).start()
+    return True, (f"Investigando: {tema}" if tema else "Investigación iniciada.")
+
+
+def investigar_auto():
+    """Entrada para el planificador: lanza una investigación si no hay otra activa."""
+    iniciada, msg = lanzar(None)
+    if not iniciada:
+        log.info(f"  Detective auto: {msg}")
