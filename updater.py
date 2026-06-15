@@ -30,7 +30,7 @@ except ImportError:
 import config
 import database
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+# El logging lo configura la app (app.py) al arrancar; aquí solo tomamos el logger.
 log = logging.getLogger(__name__)
 
 BROWSER_HEADERS = {
@@ -340,6 +340,7 @@ def run_update():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     database.init_db()
     database.seed_initial_data()
     run_update()

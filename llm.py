@@ -112,6 +112,10 @@ def _norm_nivel(valor, defecto="MEDIO"):
     return m.group(1) if m else defecto
 
 
+# Alias público: lo usan otros módulos (p. ej. detective.py) para no repetir el regex.
+norm_nivel = _norm_nivel
+
+
 def _contenido_para_local(doc):
     """Para LM Studio (sin visión): devuelve (texto, tipo, url) listo para el prompt."""
     tipo, dato, url = gemini.obtener_contenido(doc)
@@ -214,13 +218,7 @@ def traducir_titulos(items, lote=20):
     for i in range(0, len(items), lote):
         trozo = items[i:i + lote]
         lineas = "\n".join(f'{it["id"]} ||| {it["titulo"]}' for it in trozo)
-        prompt = (
-            "Traduce al ESPAÑOL natural y claro los siguientes títulos de documentos "
-            "desclasificados. Mantén nombres propios, siglas y números tal cual. "
-            "No traduzcas códigos ni identificadores. Devuelve EXCLUSIVAMENTE este JSON:\n"
-            '{"traducciones": [{"id": "...", "titulo_es": "..."}]}\n\n'
-            "TÍTULOS (formato: ID ||| título):\n" + lineas
-        )
+        prompt = gemini.PROMPT_TRADUCIR + lineas
         r = generar_json(prompt, temperature=0.2)
         if not r.get("ok"):
             return {"ok": False, "error": r.get("error"), "traducciones": mapa}

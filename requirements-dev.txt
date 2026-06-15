@@ -1,0 +1,4 @@
+# Dependencias solo para desarrollo / tests (no necesarias para ejecutar la app).
+#   pip install -r requirements-dev.txt
+#   python -m pytest -q
+pytest>=8.0.0
