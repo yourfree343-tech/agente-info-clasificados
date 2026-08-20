@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🕵️ Investigaciones del Detective</title>
+<title>Investigaciones — Archivo Clasificado</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%95%B5%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -12,12 +12,12 @@
 <nav>
   <div class="nav-brand"><span class="icon">👁️</span><span>Archivo·Clasificado</span></div>
   <div class="nav-tabs">
-    <a class="nav-tab" href="/">📂 Documentos</a>
-    <a class="nav-tab active" href="/investigaciones">🕵️ Investigaciones</a>
+    <a class="nav-tab" href="/"><span data-icon="folder"></span>Documentos</a>
+    <a class="nav-tab active" href="/investigaciones"><span data-icon="search"></span>Investigaciones</a>
   </div>
   <div class="nav-right">
-    <span id="detective-status">Cargando...</span>
-    <button class="btn btn-detective" id="btn-investigar" onclick="investigar()">🔍 Investigar ahora</button>
+    <span id="detective-status"><span class="status-dot off"></span>Cargando…</span>
+    <button class="btn btn-detective" id="btn-investigar" onclick="investigar()"><span data-icon="search"></span>Investigar ahora</button>
   </div>
 </nav>
 
@@ -30,7 +30,10 @@
     <p class="hero-sub">El detective investiga en internet por su cuenta — <b>OVNIs</b>, <b>MK-Ultra</b>, <b>Illuminati</b>, <b>Bilderberg</b>, portadas de <b>The Economist</b> y todo lo que decida seguir.</p>
   </header>
 
-  <div class="detective-warn">⚠ Estas investigaciones son <b>ESPECULATIVAS</b> y están separadas de los documentos desclasificados oficiales. Las teorías se etiquetan claramente como tales.</div>
+  <div class="detective-warn">
+    <span data-icon="alert-triangle" data-icon-size="14"></span>
+    Estas investigaciones son <b>ESPECULATIVAS</b> y están separadas de los documentos desclasificados oficiales. Las teorías se etiquetan claramente como tales.
+  </div>
 
   <div class="detective-bar">
     <div class="info">Motor: <b><span id="motor-name">—</span></b> · Auto: <b><span id="auto-mode">—</span></b> · Total dossiers: <b><span id="total-inv">0</span></b></div>
@@ -41,28 +44,36 @@
     <div class="dc-group dc-tema">
       <input type="text" id="tema-input" placeholder="Investiga un tema concreto… (p. ej. Bohemian Grove 2026)"
              onkeydown="if(event.key==='Enter') investigarTema()">
-      <button class="btn btn-detective" id="btn-tema" onclick="investigarTema()">🔍 Investigar tema</button>
+      <button class="btn btn-detective" id="btn-tema" onclick="investigarTema()"><span data-icon="search"></span>Investigar tema</button>
     </div>
     <div class="dc-group dc-filtros">
-      <input type="text" id="inv-search" placeholder="🔎 Filtrar dossiers…" oninput="applyInvFilters()">
-      <select id="inv-cert" onchange="applyInvFilters()">
+      <input type="text" id="inv-search" placeholder="Filtrar dossiers…" oninput="debounceInvLoad()">
+      <select id="inv-cert" onchange="loadInvestigaciones(1)">
         <option value="">Certeza: todas</option>
         <option value="ALTO">Certeza alta</option>
         <option value="MEDIO">Certeza media</option>
         <option value="BAJO">Certeza baja</option>
       </select>
-      <select id="inv-cat" onchange="applyInvFilters()"><option value="">Categoría: todas</option></select>
+      <select id="inv-cat" onchange="loadInvestigaciones(1)"><option value="">Categoría: todas</option></select>
     </div>
   </div>
 
   <div class="results-bar"><span id="inv-count">—</span></div>
-  <div id="investigaciones-container"><div class="loader"><span class="spinner"></span>Cargando dossiers...</div></div>
+  <div id="investigaciones-container"><div class="loader"><span class="spinner"></span>Cargando dossiers…</div></div>
+  <div class="pagination" id="inv-pagination"></div>
 </div>
 
 <div class="toast" id="toast"></div>
 
+<script src="/static/js/icons.js"></script>
 <script>
+const PAGE_SIZE = 6;
+let currentPage = 1;
+let totalInvs = 0;
+let debounceTimer = null;
 let polling = false;
+
+function debounceInvLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => loadInvestigaciones(1), 350); }
 
 async function checkEstado() {
   try {
@@ -72,9 +83,9 @@ async function checkEstado() {
     document.getElementById('total-inv').textContent = e.total || 0;
     document.getElementById('auto-mode').textContent = e.auto ? 'sí (' + (e.interval_min||'—') + ' min)' : 'no';
     document.getElementById('interval-min').textContent = e.interval_min || '—';
-    document.getElementById('detective-status').textContent =
-      e.en_curso ? '🟠 investigando…'
-                 : (e.motor_disponible ? '🟢 motor activo' : '🔴 motor no disponible');
+    const dot = e.en_curso ? 'busy' : (e.motor_disponible ? 'ok' : 'off');
+    const label = e.en_curso ? 'investigando…' : (e.motor_disponible ? 'motor activo' : 'motor no disponible');
+    document.getElementById('detective-status').innerHTML = `<span class="status-dot ${dot}"></span>${label}`;
     // Si hay una investigación en marcha (p. ej. la automática), refléjalo y vigílala.
     if (e.en_curso) { setBusy(true); pollDetective(); }
     return e;
@@ -84,8 +95,8 @@ async function checkEstado() {
 function setBusy(busy) {
   const nav = document.getElementById('btn-investigar');
   const tbtn = document.getElementById('btn-tema');
-  if (nav) { nav.disabled = busy; nav.textContent = busy ? '🔍 Investigando…' : '🔍 Investigar ahora'; }
-  if (tbtn) { tbtn.disabled = busy; tbtn.textContent = busy ? '🔍 Investigando…' : '🔍 Investigar tema'; }
+  if (nav) { nav.disabled = busy; nav.innerHTML = iconSvg('search',{size:14}) + (busy ? 'Investigando…' : 'Investigar ahora'); }
+  if (tbtn) { tbtn.disabled = busy; tbtn.innerHTML = iconSvg('search',{size:14}) + (busy ? 'Investigando…' : 'Investigar tema'); }
 }
 
 // Vigila el estado cada 5 s hasta que la investigación en curso termine.
@@ -98,9 +109,9 @@ function pollDetective() {
     if (e && !e.en_curso) {
       polling = false;
       setBusy(false);
-      await loadInvestigaciones();
-      if (e.ultimo_error) showToast('⚠️ ' + e.ultimo_error);
-      else showToast('✅ Nuevo dossier: ' + (e.ultimo_titulo || 'caso cerrado'));
+      await loadInvestigaciones(1);
+      if (e.ultimo_error) showToast('Error: ' + e.ultimo_error);
+      else showToast('Nuevo dossier: ' + (e.ultimo_titulo || 'caso cerrado'));
       return;
     }
     setTimeout(tick, 5000);
@@ -108,60 +119,70 @@ function pollDetective() {
   setTimeout(tick, 5000);
 }
 
-let allInvs = [];
+function invParams() {
+  const params = new URLSearchParams();
+  const q = document.getElementById('inv-search').value.trim();
+  const cert = document.getElementById('inv-cert').value;
+  const cat = document.getElementById('inv-cat').value;
+  if (q) params.set('busqueda', q);
+  if (cert) params.set('certeza', cert);
+  if (cat) params.set('categoria', cat);
+  return params;
+}
 
-async function loadInvestigaciones() {
+async function loadInvestigaciones(page) {
+  currentPage = page || currentPage || 1;
+  const params = invParams();
+  params.set('page', currentPage);
+  params.set('page_size', PAGE_SIZE);
   try {
-    const r = await fetch('/api/investigaciones');
-    allInvs = await r.json();
-    poblarCategorias();
-    renderInvList();
+    const r = await fetch('/api/investigaciones?' + params.toString());
+    const data = await r.json();
+    totalInvs = data.total;
+    poblarCategorias(data.categorias || []);
+    renderInvList(data.items || []);
   } catch(e) {}
 }
 
-function poblarCategorias() {
+function poblarCategorias(cats) {
   const sel = document.getElementById('inv-cat');
   const actual = sel.value;
-  const cats = [...new Set(allInvs.map(v => v.categoria).filter(Boolean))].sort();
   sel.innerHTML = '<option value="">Categoría: todas</option>' +
     cats.map(c => `<option value="${escAttr2(c)}">${escHtml(c)}</option>`).join('');
   sel.value = actual;
 }
 
-function applyInvFilters() { renderInvList(); }
-
-function renderInvList() {
+function renderInvList(items) {
   const c = document.getElementById('investigaciones-container');
-  const q = (document.getElementById('inv-search').value || '').toLowerCase().trim();
-  const cert = document.getElementById('inv-cert').value;
-  const cat = document.getElementById('inv-cat').value;
-
-  let list = allInvs;
-  if (cert) list = list.filter(v => (v.nivel_certeza || '') === cert);
-  if (cat)  list = list.filter(v => (v.categoria || '') === cat);
-  if (q) {
-    list = list.filter(v => {
-      const hay = [v.titulo, v.tema, v.gancho, v.veredicto,
-        (v.hechos_verificados||[]).join(' '), (v.hipotesis||[]).join(' '),
-        (v.especulacion||[]).join(' '), (v.conexiones||[]).join(' ')
-      ].join(' ').toLowerCase();
-      return hay.includes(q);
-    });
-  }
-
   const cnt = document.getElementById('inv-count');
-  if (!allInvs.length) {
-    c.innerHTML = '<div class="empty"><div class="icon">🕳️</div><p>Aún no hay dossiers. El detective está investigando en segundo plano — vuelve en un rato, o pulsa "Investigar ahora".</p></div>';
+
+  if (!totalInvs && !items.length) {
+    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('box',{size:40})}</div>`
+      + `<p>Aún no hay dossiers. El detective está investigando en segundo plano — vuelve en un rato, o pulsa "Investigar ahora".</p></div>`;
     cnt.textContent = '';
+    document.getElementById('inv-pagination').innerHTML = '';
     return;
   }
-  cnt.innerHTML = `<strong>${list.length}</strong> dossier${list.length!==1?'s':''}` +
-    (list.length !== allInvs.length ? ` de ${allInvs.length}` : '');
-  if (!list.length) {
-    c.innerHTML = '<div class="empty"><div class="icon">🔍</div><p>Ningún dossier coincide con el filtro.</p></div>';
+  const totalPages = Math.max(1, Math.ceil(totalInvs / PAGE_SIZE));
+  cnt.innerHTML = `<strong>${totalInvs}</strong> dossier${totalInvs!==1?'s':''} · página <strong>${currentPage}</strong> de <strong>${totalPages}</strong>`;
+  if (!items.length) {
+    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('search',{size:40})}</div><p>Ningún dossier coincide con el filtro.</p></div>`;
+    document.getElementById('inv-pagination').innerHTML = '';
     return;
   }
-  c.innerHTML = list.map(render).join('');
+  c.innerHTML = items.map(render).join('');
+  renderInvPagination(totalPages);
+}
+
+function renderInvPagination(totalPages) {
+  const p = document.getElementById('inv-pagination');
+  if (totalPages <= 1) { p.innerHTML = ''; return; }
+  p.innerHTML = `
+    <button class="btn" onclick="loadInvestigaciones(1)" ${currentPage===1?'disabled':''}>« primera</button>
+    <button class="btn" onclick="loadInvestigaciones(${currentPage-1})" ${currentPage===1?'disabled':''}>‹ anterior</button>
+    <span class="page-info">${currentPage} / ${totalPages}</span>
+    <button class="btn" onclick="loadInvestigaciones(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>siguiente ›</button>
+    <button class="btn" onclick="loadInvestigaciones(${totalPages})" ${currentPage===totalPages?'disabled':''}>última »</button>`;
 }
 
 function lista(arr) {
@@ -176,22 +197,22 @@ function render(v) {
       <img src="${escAttr(im.thumb || im.url)}" alt="${escHtml(im.titulo || '')}" loading="lazy" onerror="this.style.display='none'">
       ${im.origen ? `<div class="cap">${escHtml(im.origen)}</div>` : ''}
     </a>`).join('');
-  const cat = v.categoria ? `<span class="inv-cat">🏷 ${escHtml(v.categoria)}</span>` : '';
+  const cat = v.categoria ? `<span class="inv-cat">${iconSvg('tag',{size:11})} ${escHtml(v.categoria)}</span>` : '';
   const certClass = 'cert-' + (v.nivel_certeza || 'MEDIO');
   return `
   <div class="inv-card">
-    <div class="inv-titulo">📕 ${escHtml(v.titulo || v.tema)}</div>
+    <div class="inv-titulo">${escHtml(v.titulo || v.tema)}</div>
     <div class="inv-meta">${escHtml(v.id)} · ${escHtml(fecha)} · ${cat} <span class="${certClass}">certeza: ${escHtml(v.nivel_certeza||'—')}</span> · ${escHtml(v.motor||'')}</div>
     ${v.gancho ? `<div class="inv-gancho">${escHtml(v.gancho)}</div>` : ''}
     ${imgs ? `<div class="inv-images">${imgs}</div>` : ''}
-    <div class="inv-block hechos"><h4>✓ Hechos verificados</h4>${lista(v.hechos_verificados)}</div>
-    <div class="inv-block hipotesis"><h4>👁 Hipótesis y conexiones</h4>${lista(v.hipotesis)}</div>
-    ${(v.conexiones&&v.conexiones.length)?`<div class="inv-block conexiones"><h4>🔗 Patrones / símbolos</h4>${lista(v.conexiones)}</div>`:''}
-    <div class="inv-block especulacion"><h4>⚠ Especulación (NO probado)</h4>${lista(v.especulacion)}</div>
-    <div class="inv-block"><h4 style="color:var(--text)">🧠 Veredicto del analista</h4><div class="inv-veredicto">${escHtml(v.veredicto||'—')}</div></div>
+    <div class="inv-block hechos"><h4>${iconSvg('check-circle',{size:13})}Hechos verificados</h4>${lista(v.hechos_verificados)}</div>
+    <div class="inv-block hipotesis"><h4>${iconSvg('eye',{size:13})}Hipótesis y conexiones</h4>${lista(v.hipotesis)}</div>
+    ${(v.conexiones&&v.conexiones.length)?`<div class="inv-block conexiones"><h4>${iconSvg('link',{size:13})}Patrones / símbolos</h4>${lista(v.conexiones)}</div>`:''}
+    <div class="inv-block especulacion"><h4>${iconSvg('alert-triangle',{size:13})}Especulación (NO probado)</h4>${lista(v.especulacion)}</div>
+    <div class="inv-block"><h4 style="color:var(--text)">${iconSvg('activity',{size:13})}Veredicto del analista</h4><div class="inv-veredicto">${escHtml(v.veredicto||'—')}</div></div>
     ${fuentes ? `<div class="inv-fuentes"><strong style="color:var(--muted)">Fuentes:</strong><br>${fuentes}</div>` : ''}
     <div class="inv-actions">
-      <a class="btn btn-informe" href="/api/investigacion/${encodeURIComponent(v.id)}/pdf">📄 Descargar dossier (PDF)</a>
+      <a class="btn btn-informe" href="/api/investigacion/${encodeURIComponent(v.id)}/pdf">${iconSvg('download',{size:14})}Descargar dossier (PDF)</a>
     </div>
   </div>`;
 }
@@ -199,29 +220,29 @@ function render(v) {
 async function investigar(tema) {
   setBusy(true);
   showToast(tema
-    ? '🕵️ Investigando: ' + tema + ' — tardará varios minutos con el modelo local.'
-    : '🕵️ El detective está investigando. Tardará varios minutos con el modelo local.');
+    ? 'Investigando: ' + tema + ' — tardará varios minutos con el modelo local.'
+    : 'El detective está investigando. Tardará varios minutos con el modelo local.');
   try {
     const url = '/api/investigar' + (tema ? '?tema=' + encodeURIComponent(tema) : '');
     const r = await fetch(url, { method: 'POST' });
     const d = await r.json();
     // d.ok = iniciada; 409 con en_curso = ya estaba corriendo (también la vigilamos).
     if (!d.ok && !d.en_curso) {
-      showToast('⚠️ ' + (d.error || 'No se pudo investigar.'));
+      showToast(d.error || 'No se pudo investigar.');
       setBusy(false);
       return;
     }
     document.getElementById('tema-input').value = '';
     pollDetective();   // el dossier aparecerá cuando el modelo termine
   } catch(e) {
-    showToast('⚠️ No se pudo conectar con el servidor.');
+    showToast('No se pudo conectar con el servidor.');
     setBusy(false);
   }
 }
 
 function investigarTema() {
   const t = (document.getElementById('tema-input').value || '').trim();
-  if (!t) { showToast('✍️ Escribe un tema primero.'); return; }
+  if (!t) { showToast('Escribe un tema primero.'); return; }
   investigar(t);
 }
 
@@ -235,8 +256,9 @@ function escAttr(s) { if (!s) return '#'; if (!/^https?:\/\//i.test(s)) return '
 function escAttr2(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
 
 (async function() {
-  await Promise.all([loadInvestigaciones(), checkEstado()]);
-  setInterval(() => { loadInvestigaciones(); checkEstado(); }, 60000);
+  mountIcons();
+  await Promise.all([loadInvestigaciones(1), checkEstado()]);
+  setInterval(() => { loadInvestigaciones(currentPage); checkEstado(); }, 60000);
 })();
 </script>
 </body>

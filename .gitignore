@@ -4,8 +4,9 @@ data/
 *.db-journal
 
 # --- Configuración local con secretos ---
-# Si prefieres no subir tu config.py con la clave, descoméntalo y crea config.example.py
-# config.py
+# config.py tiene tus claves de API reales; no se sube. La plantilla sin secretos
+# vive en config.example.py (sí se sube) para que cualquiera pueda partir de ahí.
+config.py
 
 # --- Python ---
 __pycache__/

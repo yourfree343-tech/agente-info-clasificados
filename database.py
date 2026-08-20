@@ -383,41 +383,73 @@ def seed_initial_data():
     conn.close()
 
 
-def get_documents(filters=None):
-    conn = get_connection()
-    c = conn.cursor()
-    query = "SELECT * FROM documentos WHERE 1=1"
-    params = []
-
+def _documents_where(filters):
+    """Construye la cláusula WHERE + params compartida por get_documents/count_documents."""
+    clauses, params = ["1=1"], []
     if filters:
         if filters.get("categoria"):
-            query += " AND categorias LIKE ?"
-            params.append(f"%{filters['categoria']}%")
+            # EXISTS sobre json_each en vez de LIKE sobre el JSON serializado: evita falsos
+            # positivos cuando una categoría es substring de otra.
+            clauses.append("EXISTS (SELECT 1 FROM json_each(documentos.categorias) "
+                            "WHERE json_each.value = ?)")
+            params.append(filters["categoria"])
         if filters.get("pais"):
-            query += " AND pais = ?"
+            clauses.append("pais = ?")
             params.append(filters["pais"])
         if filters.get("confianza"):
-            query += " AND nivel_confianza = ?"
+            clauses.append("nivel_confianza = ?")
             params.append(filters["confianza"])
         if filters.get("verificado"):
-            query += " AND verificado = ?"
+            clauses.append("verificado = ?")
             params.append(filters["verificado"])
         if filters.get("busqueda"):
             term = f"%{filters['busqueda']}%"
-            query += " AND (titulo LIKE ? OR resumen_ejecutivo LIKE ? OR implicaciones LIKE ?)"
+            clauses.append("(titulo LIKE ? OR resumen_ejecutivo LIKE ? OR implicaciones LIKE ?)")
             params.extend([term, term, term])
         if filters.get("fecha_desde"):
-            query += " AND fecha_documento >= ?"
+            clauses.append("fecha_documento >= ?")
             params.append(filters["fecha_desde"])
         if filters.get("fecha_hasta"):
-            query += " AND fecha_documento <= ?"
+            clauses.append("fecha_documento <= ?")
             params.append(filters["fecha_hasta"])
+    return " AND ".join(clauses), params
 
-    query += " ORDER BY fecha_documento DESC, fecha_ingreso DESC"
+
+def get_documents(filters=None, limit=None, offset=0):
+    """Devuelve documentos que cumplen los filtros, más recientes primero.
+       Si se pasa limit, pagina en el propio SQL (evita traer todo el dataset)."""
+    conn = get_connection()
+    c = conn.cursor()
+    where, params = _documents_where(filters)
+    query = f"SELECT * FROM documentos WHERE {where} ORDER BY fecha_documento DESC, fecha_ingreso DESC"
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params = params + [limit, offset]
     c.execute(query, params)
     rows = c.fetchall()
     conn.close()
     return [_row_to_doc(r) for r in rows]
+
+
+def count_documents(filters=None):
+    conn = get_connection()
+    c = conn.cursor()
+    where, params = _documents_where(filters)
+    c.execute(f"SELECT COUNT(*) as n FROM documentos WHERE {where}", params)
+    n = c.fetchone()["n"]
+    conn.close()
+    return n
+
+
+def get_all_document_ids():
+    """Solo los IDs (sin traer resúmenes/JSON largos). Para comprobaciones rápidas
+       como qué documentos aún no tienen informe PDF generado."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT id FROM documentos")
+    ids = [r["id"] for r in c.fetchall()]
+    conn.close()
+    return ids
 
 
 def get_stats():
@@ -619,10 +651,34 @@ def get_temas_investigados(limit=40):
     return temas
 
 
-def get_investigaciones():
+def _investigaciones_where(filters):
+    clauses, params = ["1=1"], []
+    if filters:
+        if filters.get("certeza"):
+            clauses.append("nivel_certeza = ?")
+            params.append(filters["certeza"])
+        if filters.get("categoria"):
+            clauses.append("categoria = ?")
+            params.append(filters["categoria"])
+        if filters.get("busqueda"):
+            term = f"%{filters['busqueda']}%"
+            clauses.append(
+                "(titulo LIKE ? OR tema LIKE ? OR gancho LIKE ? OR veredicto LIKE ? OR "
+                "hechos_verificados LIKE ? OR hipotesis LIKE ? OR especulacion LIKE ? OR conexiones LIKE ?)"
+            )
+            params.extend([term] * 8)
+    return " AND ".join(clauses), params
+
+
+def get_investigaciones(filters=None, limit=None, offset=0):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM investigaciones ORDER BY fecha DESC")
+    where, params = _investigaciones_where(filters)
+    query = f"SELECT * FROM investigaciones WHERE {where} ORDER BY fecha DESC"
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params = params + [limit, offset]
+    c.execute(query, params)
     rows = c.fetchall()
     conn.close()
     result = []
@@ -635,6 +691,17 @@ def get_investigaciones():
                 d[f] = []
         result.append(d)
     return result
+
+
+def get_categorias_investigaciones():
+    """Categorías distintas ya usadas por el detective (para el selector de filtro)."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT DISTINCT categoria FROM investigaciones WHERE categoria IS NOT NULL "
+              "AND categoria != '' ORDER BY categoria")
+    cats = [r["categoria"] for r in c.fetchall()]
+    conn.close()
+    return cats
 
 
 def get_investigacion(inv_id):
@@ -655,10 +722,11 @@ def get_investigacion(inv_id):
     return d
 
 
-def count_investigaciones():
+def count_investigaciones(filters=None):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) as n FROM investigaciones")
+    where, params = _investigaciones_where(filters)
+    c.execute(f"SELECT COUNT(*) as n FROM investigaciones WHERE {where}", params)
     n = c.fetchone()["n"]
     conn.close()
     return n

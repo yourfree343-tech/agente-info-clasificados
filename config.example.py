@@ -1,6 +1,10 @@
 """
 Configuración del Agente Info Clasificados.
 Edita estos valores para cambiar el comportamiento sin tocar el resto del código.
+
+Esta es la PLANTILLA (sin secretos) que se sube al repositorio. Para usarla:
+  1) Copia este archivo como config.py:   copy config.example.py config.py
+  2) Rellena tus claves de API en config.py (ese archivo NO se sube, está en .gitignore).
 """
 
 import os
@@ -26,11 +30,14 @@ GEMINI_MODEL = "gemini-2.5-flash"
 # ===========================================================================
 #  MOTOR LLM INTERCAMBIABLE (cerebro del detective y de los resúmenes de texto)
 # ===========================================================================
-# "gemini"   -> usa la API gratuita de Gemini (tiene límite diario).
-# "lmstudio" -> usa tu LM Studio LOCAL (sin límites). Requiere:
+# "gemini"     -> usa la API gratuita de Gemini (tiene límite diario).
+# "lmstudio"   -> usa tu LM Studio LOCAL (sin límites, pero lento en CPU). Requiere:
 #     1) Abrir LM Studio, cargar un modelo (p. ej. Llama 3.1 8B o Qwen2.5 7B).
 #     2) Pestaña "Developer/Local Server" -> Start Server (puerto 1234).
-LLM_BACKEND = "lmstudio"    # "gemini" o "lmstudio" (tu modelo local sin límites)
+# "openrouter" -> usa la API de OpenRouter (modelo en la nube, no depende de tu CPU).
+#     1) Entra en https://openrouter.ai/keys y crea una clave (algunos modelos son gratis).
+#     2) Pégala abajo en OPENROUTER_API_KEY.
+LLM_BACKEND = "openrouter"    # "gemini" | "lmstudio" | "openrouter"
 
 # LM Studio (servidor local compatible con OpenAI)
 LMSTUDIO_URL = "http://localhost:1234/v1"
@@ -38,6 +45,17 @@ LMSTUDIO_MODEL = "qwen/qwen3.5-9b"   # modelo cargado en LM Studio
 LMSTUDIO_TIMEOUT = 1800  # CPU: un dossier 9B puede tardar >10 min; margen amplio
                          # (es solo un techo: una llamada sana devuelve en cuanto acaba)
 LMSTUDIO_MAX_TOKENS = 2500   # tope de salida por llamada (evita dossiers JSON truncados)
+
+# OpenRouter (API en la nube compatible con OpenAI; https://openrouter.ai)
+# 1) Entra GRATIS en: https://openrouter.ai/keys  (con tu cuenta Google/GitHub)
+# 2) Crea una clave y pégala aquí entre las comillas:
+OPENROUTER_API_KEY = ""    # <-- pega tu clave de OpenRouter aquí
+# (alternativa: definir la variable de entorno OPENROUTER_API_KEY)
+OPENROUTER_API_KEY = OPENROUTER_API_KEY or os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_MODEL = "openai/gpt-oss-120b"   # revisa el slug/precio exacto en openrouter.ai/models
+OPENROUTER_TIMEOUT = 180   # es un modelo en la nube: no depende de tu CPU, no hace falta más margen
+OPENROUTER_MAX_TOKENS = 2500   # tope de salida por llamada (evita dossiers JSON truncados)
 
 # Analizar automáticamente los documentos nuevos al hacer la búsqueda diaria
 # (solo funciona si hay una clave configurada arriba).
@@ -100,7 +118,7 @@ TIMEZONE = "Europe/Madrid"
 
 # --- Red ---
 HTTP_TIMEOUT = 20        # segundos de espera por petición
-USER_AGENT = "AgentInfoClasificados/2.0 (investigacion-publica)"
+USER_AGENT = "AgentInfoClasificados/3.0 (investigacion-publica)"
 
 # Tamaño máximo de un documento para ingerirlo (los enormes no se pueden analizar).
 MAX_DOC_BYTES = 35 * 1024 * 1024

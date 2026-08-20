@@ -2,8 +2,9 @@
 Capa de modelo de lenguaje INTERCAMBIABLE.
 
 Permite usar como "cerebro":
-  - "gemini"   : API gratuita de Gemini (límite diario).
-  - "lmstudio" : tu LM Studio local (sin límites, compatible con OpenAI).
+  - "gemini"     : API gratuita de Gemini (límite diario).
+  - "lmstudio"   : tu LM Studio local (sin límites, compatible con OpenAI).
+  - "openrouter" : API de OpenRouter (modelo en la nube, compatible con OpenAI).
 
 Se elige en config.LLM_BACKEND. El resto del programa llama a generar_json()
 sin saber qué motor hay detrás.
@@ -32,12 +33,16 @@ def disponible():
             return r.status_code == 200
         except Exception:
             return False
+    if backend() == "openrouter":
+        return bool(getattr(config, "OPENROUTER_API_KEY", ""))
     return gemini.hay_clave()
 
 
 def nombre_motor():
     if backend() == "lmstudio":
         return f"LM Studio (local) · {config.LMSTUDIO_MODEL}"
+    if backend() == "openrouter":
+        return f"OpenRouter · {config.OPENROUTER_MODEL}"
     return f"Gemini · {config.GEMINI_MODEL}"
 
 
@@ -87,6 +92,50 @@ def _lmstudio_json(prompt, temperature):
 
 
 # ---------------------------------------------------------------------------
+# OpenRouter (API en la nube compatible con OpenAI)
+# ---------------------------------------------------------------------------
+
+def _openrouter_json(prompt, temperature):
+    """Llama a OpenRouter y devuelve el JSON parseado. Mismo contrato que _lmstudio_json:
+       errores claros y una regeneración si el modelo devuelve JSON roto/truncado."""
+    if not getattr(config, "OPENROUTER_API_KEY", ""):
+        raise RuntimeError("No hay clave de OpenRouter configurada en config.py (OPENROUTER_API_KEY).")
+    headers = {"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"}
+    payload = {
+        "model": config.OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": "Responde SIEMPRE en español y EXCLUSIVAMENTE "
+             "con un objeto JSON válido, sin texto adicional, sin etiquetas y sin razonamiento."},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": temperature,
+        "max_tokens": getattr(config, "OPENROUTER_MAX_TOKENS", 2500),
+    }
+    for intento in range(2):
+        try:
+            r = requests.post(f"{config.OPENROUTER_URL}/chat/completions",
+                              headers=headers, json=payload, timeout=config.OPENROUTER_TIMEOUT)
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(f"No se pudo conectar con OpenRouter. ¿Hay conexión a internet? ({e})")
+        except requests.exceptions.Timeout:
+            raise RuntimeError(f"OpenRouter no respondió en {config.OPENROUTER_TIMEOUT}s.")
+        if r.status_code == 401:
+            raise RuntimeError("OpenRouter rechazó la clave de API (401). Revisa OPENROUTER_API_KEY en config.py.")
+        if r.status_code == 429:
+            raise RuntimeError("OpenRouter: límite de peticiones alcanzado (429). Prueba de nuevo en unos minutos.")
+        if r.status_code != 200:
+            raise RuntimeError(f"OpenRouter HTTP {r.status_code}: {r.text[:200]}")
+        contenido = r.json()["choices"][0]["message"]["content"]
+        try:
+            return gemini._parse_json(contenido)
+        except Exception:
+            if intento == 0:
+                log.info("  OpenRouter devolvió un JSON no válido; regenerando una vez...")
+                continue
+            raise RuntimeError(f"OpenRouter no devolvió un JSON parseable: {(contenido or '')[:200]}")
+
+
+# ---------------------------------------------------------------------------
 # API pública
 # ---------------------------------------------------------------------------
 
@@ -95,6 +144,8 @@ def generar_json(prompt, temperature=0.7):
     try:
         if backend() == "lmstudio":
             data = _lmstudio_json(prompt, temperature)
+        elif backend() == "openrouter":
+            data = _openrouter_json(prompt, temperature)
         else:
             raw = gemini._llamar_gemini([{"text": prompt}])
             data = gemini._parse_json(raw)

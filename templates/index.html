@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>⚠ ARCHIVOS CLASIFICADOS ⚠</title>
+<title>Archivo Clasificado</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%91%81%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -12,15 +12,15 @@
 <nav>
   <div class="nav-brand"><span class="icon">👁️</span><span>Archivo·Clasificado</span></div>
   <div class="nav-tabs">
-    <a class="nav-tab active" href="/">📂 Documentos</a>
-    <a class="nav-tab" href="/investigaciones">🕵️ Investigaciones</a>
+    <a class="nav-tab active" href="/"><span data-icon="folder"></span>Documentos</a>
+    <a class="nav-tab" href="/investigaciones"><span data-icon="search"></span>Investigaciones</a>
   </div>
   <div class="nav-right">
-    <span id="update-status">Cargando...</span>
-    <button class="btn" onclick="traducirTitulos()" id="btn-traducir" style="display:none">🌐 Traducir títulos</button>
-    <button class="btn" onclick="analizarPendientes()" id="btn-ia">🤖 Analizar pendientes</button>
-    <button class="btn btn-success" onclick="triggerUpdate()" id="btn-update">⟳ Actualizar ahora</button>
-    <a class="btn btn-primary" href="/api/exportar" download>⬇ Exportar JSON</a>
+    <span id="update-status"><span class="status-dot off"></span>Cargando…</span>
+    <button class="btn" onclick="traducirTitulos()" id="btn-traducir" style="display:none"><span data-icon="globe"></span>Traducir títulos</button>
+    <button class="btn" onclick="analizarPendientes()" id="btn-ia"><span data-icon="sparkles"></span>Analizar pendientes</button>
+    <button class="btn btn-success" onclick="triggerUpdate()" id="btn-update"><span data-icon="refresh"></span>Actualizar ahora</button>
+    <a class="btn btn-primary" href="/api/exportar" download><span data-icon="download"></span>Exportar JSON</a>
   </div>
 </nav>
 
@@ -33,25 +33,26 @@
     <p class="hero-sub">Documentos desclasificados oficiales — <b>OVNIs</b>, <b>MK-Ultra</b>, <b>JFK</b>, <b>Stargate</b>, <b>Northwoods</b> y <b>Paperclip</b>.</p>
   </header>
 
-  <div id="ia-banner" style="display:none; background:rgba(224,179,65,0.10); border:1px solid rgba(224,179,65,0.4); border-radius:6px; padding:14px 18px; margin-bottom:20px; color:var(--text); font-size:13px; line-height:1.6;">
-    🤖 <strong>Resúmenes con IA no activados.</strong> Configura un motor en <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;">config.py</code> (Gemini o LM Studio local).
+  <div id="ia-banner" class="banner" style="display:none">
+    <span class="icon" data-icon="sparkles" data-icon-size="18"></span>
+    <span><strong>Resúmenes con IA no activados.</strong> Configura un motor en <code>config.py</code> (Gemini, LM Studio u OpenRouter).</span>
   </div>
 
   <div class="stats-grid" id="stats-grid">
-    <div class="stat-card"><div class="num" id="stat-total">—</div><div class="lbl">📂 Expedientes totales</div></div>
-    <div class="stat-card"><div class="num" id="stat-nuevos" style="color:var(--danger)">—</div><div class="lbl">🆕 Nuevos hoy</div></div>
-    <div class="stat-card"><div class="num" id="stat-oficial" style="color:var(--alto)">—</div><div class="lbl">✓ Verificados oficiales</div></div>
-    <div class="stat-card"><div class="num" id="stat-posible" style="color:var(--medio)">—</div><div class="lbl">⚠ Posibles (sin verificar)</div></div>
-    <div class="stat-card"><div class="num" id="stat-paises">—</div><div class="lbl">🌍 Países</div></div>
+    <div class="stat-card"><div class="num" id="stat-total">—</div><div class="lbl"><span data-icon="folder"></span>Expedientes totales</div></div>
+    <div class="stat-card"><div class="num c-danger" id="stat-nuevos">—</div><div class="lbl"><span data-icon="plus-circle"></span>Nuevos hoy</div></div>
+    <div class="stat-card"><div class="num c-alto" id="stat-oficial">—</div><div class="lbl"><span data-icon="check-circle"></span>Verificados oficiales</div></div>
+    <div class="stat-card"><div class="num c-medio" id="stat-posible">—</div><div class="lbl"><span data-icon="alert-triangle"></span>Posibles (sin verificar)</div></div>
+    <div class="stat-card"><div class="num" id="stat-paises">—</div><div class="lbl"><span data-icon="globe"></span>Países</div></div>
   </div>
 
   <div class="charts-row">
-    <div class="chart-card"><h3>△ Por categoría</h3><div id="chart-categorias"></div></div>
-    <div class="chart-card"><h3>👁 Por país</h3><div id="chart-paises"></div></div>
+    <div class="chart-card"><h3><span data-icon="bar-chart"></span>Por categoría</h3><div id="chart-categorias"></div></div>
+    <div class="chart-card"><h3><span data-icon="globe"></span>Por país</h3><div id="chart-paises"></div></div>
   </div>
 
   <div class="filters">
-    <div class="filter-group"><label>Búsqueda libre</label><input type="text" id="search-input" placeholder="🔍 Buscar..." oninput="debounceLoad()"></div>
+    <div class="filter-group"><label>Búsqueda libre</label><input type="text" id="search-input" placeholder="Buscar…" oninput="debounceLoad()"></div>
     <div class="filter-group"><label>Categoría</label><select id="filter-categoria" onchange="loadDocs()">
       <option value="">Todas</option>
       <option>Seguridad y defensa</option><option>Inteligencia y espionaje</option>
@@ -73,36 +74,38 @@
     </select></div>
     <div class="filter-group"><label>Desde</label><input type="date" id="filter-desde" onchange="loadDocs()"></div>
     <div class="filter-group"><label>Hasta</label><input type="date" id="filter-hasta" onchange="loadDocs()"></div>
-    <div class="filter-actions"><button class="btn" onclick="clearFilters()">✕ Limpiar</button></div>
+    <div class="filter-actions"><button class="btn" onclick="clearFilters()"><span data-icon="x"></span>Limpiar</button></div>
   </div>
 
   <div class="results-bar">
-    <span id="results-count">Cargando...</span>
-    <span style="color:var(--muted); font-size:12px;">▼ Más recientes primero</span>
+    <span id="results-count">Cargando…</span>
+    <span style="color:var(--muted); font-size:12px;">Más recientes primero</span>
   </div>
-  <div id="docs-container"><div class="loader"><span class="spinner"></span>Accediendo a los archivos clasificados...</div></div>
+  <div id="docs-container"><div class="loader"><span class="spinner"></span>Accediendo a los archivos clasificados…</div></div>
   <div class="pagination" id="pagination"></div>
 
   <div class="log-section">
-    <h2>📡 Registro de vigilancia · actualizaciones automáticas</h2>
+    <h2><span data-icon="radio"></span>Registro de vigilancia · actualizaciones automáticas</h2>
     <table class="log-table">
       <thead><tr><th>Fecha</th><th>Fuente</th><th>Enc.</th><th>Nuevos</th><th>Estado</th><th>Detalle</th></tr></thead>
-      <tbody id="log-tbody"><tr><td colspan="6" style="color:var(--muted); text-align:center; padding:20px;">Cargando...</td></tr></tbody>
+      <tbody id="log-tbody"><tr><td colspan="6" style="color:var(--muted); text-align:center; padding:20px;">Cargando…</td></tr></tbody>
     </table>
   </div>
 
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="/static/js/icons.js"></script>
 <script>
 const PAGE_SIZE = 10;
-let allDocs = [];
 let currentPage = 1;
+let totalDocs = 0;
 let debounceTimer = null;
+let updatePolling = false;
 
-function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(loadDocs, 350); }
+function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => loadDocs(1), 350); }
 
-async function loadDocs() {
+function currentParams() {
   const params = new URLSearchParams();
   const v = id => document.getElementById(id).value;
   const s = v('search-input').trim();
@@ -113,33 +116,38 @@ async function loadDocs() {
   if (v('filter-verificado')) params.set('verificado', v('filter-verificado'));
   if (v('filter-desde')) params.set('fecha_desde', v('filter-desde'));
   if (v('filter-hasta')) params.set('fecha_hasta', v('filter-hasta'));
+  return params;
+}
+
+async function loadDocs(page) {
+  currentPage = page || currentPage || 1;
+  const params = currentParams();
+  params.set('page', currentPage);
+  params.set('page_size', PAGE_SIZE);
 
   const c = document.getElementById('docs-container');
-  c.innerHTML = '<div class="loader"><span class="spinner"></span>Cargando...</div>';
+  c.innerHTML = `<div class="loader">${iconSvg('refresh', {size:18})}Cargando…</div>`;
   try {
     const r = await fetch('/api/documentos?' + params.toString());
-    allDocs = await r.json();
-    currentPage = 1;
-    renderPage();
+    const data = await r.json();
+    totalDocs = data.total;
+    renderPage(data.items);
   } catch(e) {
-    c.innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>Error al cargar.</p></div>';
+    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('alert-triangle', {size:40})}</div><p>Error al cargar.</p></div>`;
   }
 }
 
-function renderPage() {
-  const total = allDocs.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  if (currentPage > totalPages) currentPage = totalPages;
+function renderPage(items) {
+  const totalPages = Math.max(1, Math.ceil(totalDocs / PAGE_SIZE));
   const start = (currentPage - 1) * PAGE_SIZE;
-  const slice = allDocs.slice(start, start + PAGE_SIZE);
   const c = document.getElementById('docs-container');
-  if (!slice.length) {
-    c.innerHTML = '<div class="empty"><div class="icon">🕳️</div><p>No se encontraron expedientes.</p></div>';
+  if (!items.length) {
+    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('box', {size:40})}</div><p>No se encontraron expedientes.</p></div>`;
   } else {
-    c.innerHTML = slice.map((d, i) => renderCard(d, start + i)).join('');
+    c.innerHTML = items.map((d, i) => renderCard(d, start + i)).join('');
   }
   document.getElementById('results-count').innerHTML =
-    `<strong>${total}</strong> expediente${total!==1?'s':''} · página <strong>${currentPage}</strong> de <strong>${totalPages}</strong>`;
+    `<strong>${totalDocs}</strong> expediente${totalDocs!==1?'s':''} · página <strong>${currentPage}</strong> de <strong>${totalPages}</strong>`;
   renderPagination(totalPages);
   window.scrollTo({top:0, behavior:'smooth'});
 }
@@ -148,13 +156,12 @@ function renderPagination(totalPages) {
   const p = document.getElementById('pagination');
   if (totalPages <= 1) { p.innerHTML = ''; return; }
   p.innerHTML = `
-    <button class="btn" onclick="goPage(1)" ${currentPage===1?'disabled':''}>« primera</button>
-    <button class="btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹ anterior</button>
+    <button class="btn" onclick="loadDocs(1)" ${currentPage===1?'disabled':''}>« primera</button>
+    <button class="btn" onclick="loadDocs(${currentPage-1})" ${currentPage===1?'disabled':''}>‹ anterior</button>
     <span class="page-info">${currentPage} / ${totalPages}</span>
-    <button class="btn" onclick="goPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>siguiente ›</button>
-    <button class="btn" onclick="goPage(${totalPages})" ${currentPage===totalPages?'disabled':''}>última »</button>`;
+    <button class="btn" onclick="loadDocs(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>siguiente ›</button>
+    <button class="btn" onclick="loadDocs(${totalPages})" ${currentPage===totalPages?'disabled':''}>última »</button>`;
 }
-function goPage(n) { currentPage = n; renderPage(); }
 
 function isToday(iso) {
   if (!iso) return false;
@@ -169,20 +176,21 @@ function renderCard(d, i) {
   const orgs = (d.organismo || []).map(o => `<span class="org-badge">${escHtml(o)}</span>`).join('');
   const verif = d.verificado || '';
   const verifClass = verif === 'Oficial' ? 'verif-Oficial' : 'verif-Posible';
-  const verifBadge = verif ? `<span class="verif-badge ${verifClass}">${verif==='Oficial'?'✓':'⚠'} ${escHtml(verif)}</span>` : '';
+  const verifBadge = verif ? `<span class="verif-badge ${verifClass}">${iconSvg(verif==='Oficial'?'check-circle':'alert-triangle',{size:12})} ${escHtml(verif)}</span>` : '';
   const ribbon = isToday(d.fecha_ingreso) ? '<div class="nuevo-ribbon">NUEVO</div>' : '';
-  const iaBadge = d.analizado_ia === 'gemini' ? '<span class="ia-badge">🤖 IA</span>' : '';
+  const iaBadge = d.analizado_ia === 'gemini' ? `<span class="ia-badge">${iconSvg('sparkles',{size:12})} IA</span>` : '';
   return `
   <div class="doc-card" id="card-${i}">
     ${ribbon}
-    <div class="doc-header" onclick="toggleCard(${i})">
+    <div class="doc-header" role="button" tabindex="0" aria-expanded="false" aria-controls="body-${i}"
+         onclick="toggleCard(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCard(${i})}">
       <div class="doc-meta-left">
         <div class="doc-id">▣ EXPEDIENTE ${escHtml(d.id)}</div>
         <div class="doc-titulo">${escHtml(d.titulo)}</div>
         <div class="doc-tags">
-          <span class="tag tag-fecha">📅 ${escHtml(d.fecha_documento||'—')}</span>
-          <span class="tag tag-pais">🌍 ${escHtml(d.pais||'—')}</span>
-          <span class="tag tag-tipo">📄 ${escHtml(d.num_documentos||'—')}</span>
+          <span class="tag tag-fecha">${iconSvg('calendar',{size:11})} ${escHtml(d.fecha_documento||'—')}</span>
+          <span class="tag tag-pais">${iconSvg('globe',{size:11})} ${escHtml(d.pais||'—')}</span>
+          <span class="tag tag-tipo">${iconSvg('file-text',{size:11})} ${escHtml(d.num_documentos||'—')}</span>
           ${cats}
         </div>
       </div>
@@ -193,12 +201,12 @@ function renderCard(d, i) {
       </div>
       <span class="chevron">›</span>
     </div>
-    <div class="doc-body">
+    <div class="doc-body" id="body-${i}">
       <div class="section-title">Resumen ejecutivo ${d.analizado_ia==='gemini'?'<span style="color:#bc8cff;font-weight:400;text-transform:none;letter-spacing:0">· generado por IA</span>':''}</div>
       <div class="resumen">${escHtml(d.resumen_ejecutivo || '—')}</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn btn-ia-card" onclick="event.stopPropagation(); analizarUno('${d.id}', this)">🤖 ${d.analizado_ia==='gemini'?'Volver a resumir con IA':'Resumir con IA'}</button>
-        <button class="btn btn-informe" onclick="event.stopPropagation(); generarInforme('${d.id}', this)">📄 Descargar informe PDF</button>
+        <button class="btn btn-ia-card" onclick="event.stopPropagation(); analizarUno('${d.id}', this)">${iconSvg('sparkles',{size:14})} ${d.analizado_ia==='gemini'?'Volver a resumir con IA':'Resumir con IA'}</button>
+        <button class="btn btn-informe" onclick="event.stopPropagation(); generarInforme('${d.id}', this)">${iconSvg('download',{size:14})} Descargar informe PDF</button>
       </div>
       <div class="section-title">Puntos clave</div>
       <ul class="puntos">${puntos || '<li>No disponible</li>'}</ul>
@@ -223,7 +231,12 @@ function renderCard(d, i) {
   </div>`;
 }
 
-function toggleCard(i) { document.getElementById('card-'+i).classList.toggle('open'); }
+function toggleCard(i) {
+  const card = document.getElementById('card-'+i);
+  const header = card.querySelector('.doc-header');
+  const open = card.classList.toggle('open');
+  header.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
 
 async function loadStats() {
   try {
@@ -257,36 +270,69 @@ async function loadLog() {
       <td>${r.docs_encontrados??'—'}</td><td>${r.docs_nuevos??'—'}</td>
       <td class="${r.estado==='OK'?'status-ok':'status-error'}">${escHtml(r.estado||'')}</td>
       <td style="color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis">${escHtml(r.detalle||'')}</td></tr>`).join('');
-    document.getElementById('update-status').textContent = 'Última: ' + (rows[0].timestamp||'').replace('T',' ').split('.')[0];
+    const dotClass = rows[0].estado === 'OK' ? 'ok' : 'off';
+    document.getElementById('update-status').innerHTML =
+      `<span class="status-dot ${dotClass}"></span>Última: ` + escHtml((rows[0].timestamp||'').replace('T',' ').split('.')[0]);
   } catch(e) {}
 }
 
-async function triggerUpdate() {
+async function checkActualizarEstado() {
+  try {
+    const e = await (await fetch('/api/actualizar/estado')).json();
+    if (e.en_curso) { setUpdateBusy(true); pollActualizar(); }
+    return e;
+  } catch(e) { return null; }
+}
+
+function setUpdateBusy(busy) {
   const b = document.getElementById('btn-update');
-  b.disabled = true; b.textContent = '⟳ Actualizando...';
-  showToast('🔄 Iniciando rastreo de fuentes...');
+  b.disabled = busy;
+  b.innerHTML = busy ? `${iconSvg('refresh',{size:14})}Actualizando…` : `${iconSvg('refresh',{size:14})}Actualizar ahora`;
+}
+
+function pollActualizar() {
+  if (updatePolling) return;
+  updatePolling = true;
+  const tick = async () => {
+    let e = null;
+    try { e = await (await fetch('/api/actualizar/estado')).json(); } catch(_) {}
+    if (e && !e.en_curso) {
+      updatePolling = false;
+      setUpdateBusy(false);
+      await Promise.all([loadDocs(currentPage), loadStats(), loadLog()]);
+      if (e.ultimo_error) showToast('Error al actualizar: ' + e.ultimo_error);
+      else showToast(`Actualización completa: ${e.ultimo_nuevos ?? 0} nuevos.`);
+      return;
+    }
+    setTimeout(tick, 4000);
+  };
+  setTimeout(tick, 4000);
+}
+
+async function triggerUpdate() {
+  setUpdateBusy(true);
+  showToast('Iniciando rastreo de fuentes…');
   try {
     const d = await (await fetch('/api/actualizar', { method: 'POST' })).json();
-    if (d.ok) { showToast(`✅ ${d.nuevos} nuevos.`); await Promise.all([loadDocs(), loadStats(), loadLog()]); }
-    else showToast('⚠️ ' + (d.error||'error'));
-  } catch(e) { showToast('⚠️ Sin conexión.'); }
-  b.disabled = false; b.innerHTML = '⟳ Actualizar ahora';
+    if (!d.ok && !d.en_curso) { showToast(d.error || 'No se pudo iniciar la actualización.'); setUpdateBusy(false); return; }
+    pollActualizar();
+  } catch(e) { showToast('Sin conexión.'); setUpdateBusy(false); }
 }
 
 async function checkIaEstado() {
   try {
     const e = await (await fetch('/api/ia/estado')).json();
-    document.getElementById('ia-banner').style.display = e.configurada ? 'none' : 'block';
+    document.getElementById('ia-banner').style.display = e.configurada ? 'none' : 'flex';
     const btn = document.getElementById('btn-ia');
     if (e.configurada) {
       btn.style.display = 'inline-flex';
-      btn.textContent = e.pendientes > 0 ? `🤖 Analizar ${e.pendientes} pendiente(s)` : '🤖 Analizar pendientes';
+      btn.innerHTML = iconSvg('sparkles',{size:14}) + (e.pendientes > 0 ? `Analizar ${e.pendientes} pendiente(s)` : 'Analizar pendientes');
       btn.disabled = e.pendientes === 0;
     } else btn.style.display = 'none';
     const btnT = document.getElementById('btn-traducir');
     if (e.configurada && e.titulos_pendientes > 0) {
       btnT.style.display = 'inline-flex';
-      btnT.textContent = `🌐 Traducir ${e.titulos_pendientes} título(s)`;
+      btnT.innerHTML = iconSvg('globe',{size:14}) + `Traducir ${e.titulos_pendientes} título(s)`;
       btnT.disabled = false;
     } else btnT.style.display = 'none';
   } catch(e) {}
@@ -294,57 +340,57 @@ async function checkIaEstado() {
 
 async function traducirTitulos() {
   const b = document.getElementById('btn-traducir');
-  b.disabled = true; b.textContent = '🌐 Traduciendo...';
-  showToast('🌐 Traduciendo títulos...');
+  b.disabled = true; b.innerHTML = iconSvg('globe',{size:14}) + 'Traduciendo…';
+  showToast('Traduciendo títulos…');
   try {
     const d = await (await fetch('/api/ia/traducir_titulos', { method: 'POST' })).json();
-    if (d.ok) { showToast(`✅ ${d.traducidos} traducido(s).`); await Promise.all([loadDocs(), checkIaEstado()]); }
-    else { showToast('⚠️ ' + (d.error||'error')); b.disabled = false; }
-  } catch(e) { showToast('⚠️ Sin conexión.'); b.disabled = false; }
+    if (d.ok) { showToast(`${d.traducidos} título(s) traducido(s).`); await Promise.all([loadDocs(currentPage), checkIaEstado()]); }
+    else { showToast(d.error||'Error al traducir.'); b.disabled = false; }
+  } catch(e) { showToast('Sin conexión.'); b.disabled = false; }
 }
 
 async function analizarUno(docId, btnEl) {
-  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = '🤖 Analizando...';
-  showToast('🤖 Resumiendo con IA...');
+  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = iconSvg('sparkles',{size:14}) + 'Analizando…';
+  showToast('Resumiendo con IA…');
   try {
     const d = await (await fetch('/api/ia/analizar/'+encodeURIComponent(docId), {method:'POST'})).json();
-    if (d.ok) { showToast('✅ Resumen IA listo.'); await Promise.all([loadDocs(), loadStats(), checkIaEstado()]); }
-    else { showToast('⚠️ '+(d.error||'error')); btnEl.disabled=false; btnEl.innerHTML=o; }
-  } catch(e) { showToast('⚠️ Sin conexión.'); btnEl.disabled=false; btnEl.innerHTML=o; }
+    if (d.ok) { showToast('Resumen IA listo.'); await Promise.all([loadDocs(currentPage), loadStats(), checkIaEstado()]); }
+    else { showToast(d.error||'Error al analizar.'); btnEl.disabled=false; btnEl.innerHTML=o; }
+  } catch(e) { showToast('Sin conexión.'); btnEl.disabled=false; btnEl.innerHTML=o; }
 }
 
 async function analizarPendientes() {
   const b = document.getElementById('btn-ia');
-  b.disabled = true; b.textContent = '🤖 Analizando...';
-  showToast('🤖 Analizando pendientes...');
+  b.disabled = true; b.innerHTML = iconSvg('sparkles',{size:14}) + 'Analizando…';
+  showToast('Analizando pendientes…');
   try {
     const d = await (await fetch('/api/ia/analizar_pendientes', {method:'POST'})).json();
     if (d.ok) {
-      let m = `✅ ${d.analizados} analizado(s).`;
+      let m = `${d.analizados} analizado(s).`;
       if (d.restantes>0) m += ` Quedan ${d.restantes}.`;
       showToast(m);
-      await Promise.all([loadDocs(), loadStats(), checkIaEstado()]);
-    } else showToast('⚠️ '+(d.error||'error'));
-  } catch(e) { showToast('⚠️ Sin conexión.'); }
+      await Promise.all([loadDocs(currentPage), loadStats(), checkIaEstado()]);
+    } else showToast(d.error||'Error al analizar.');
+  } catch(e) { showToast('Sin conexión.'); }
   b.disabled = false; checkIaEstado();
 }
 
 async function generarInforme(docId, btnEl) {
-  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = '📄 Generando...';
-  showToast('📄 Generando informe PDF...');
+  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = iconSvg('file-text',{size:14}) + 'Generando…';
+  showToast('Generando informe PDF…');
   try {
     const d = await (await fetch('/api/informe/'+encodeURIComponent(docId)+'/generar', {method:'POST'})).json();
     if (d.ok) {
-      showToast('✅ Informe listo. Descargando...');
+      showToast('Informe listo. Descargando…');
       window.location = d.url_descarga;
-      btnEl.innerHTML='📄 Descargar informe PDF'; btnEl.disabled=false;
-    } else { showToast('⚠️ '+(d.error||'error')); btnEl.innerHTML=o; btnEl.disabled=false; }
-  } catch(e) { showToast('⚠️ Sin conexión.'); btnEl.innerHTML=o; btnEl.disabled=false; }
+      btnEl.innerHTML = iconSvg('download',{size:14}) + 'Descargar informe PDF'; btnEl.disabled=false;
+    } else { showToast(d.error||'Error al generar el informe.'); btnEl.innerHTML=o; btnEl.disabled=false; }
+  } catch(e) { showToast('Sin conexión.'); btnEl.innerHTML=o; btnEl.disabled=false; }
 }
 
 function clearFilters() {
   ['search-input','filter-categoria','filter-pais','filter-confianza','filter-verificado','filter-desde','filter-hasta'].forEach(id => document.getElementById(id).value = '');
-  loadDocs();
+  loadDocs(1);
 }
 
 function showToast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 4000); }
@@ -352,7 +398,8 @@ function escHtml(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(
 function escAttr(s) { if (!s) return '#'; if (!/^https?:\/\//i.test(s)) return '#'; return String(s).replace(/"/g,'&quot;'); }
 
 (async function() {
-  await Promise.all([loadDocs(), loadStats(), loadLog(), checkIaEstado()]);
+  mountIcons();
+  await Promise.all([loadDocs(1), loadStats(), loadLog(), checkIaEstado(), checkActualizarEstado()]);
   setInterval(() => { loadStats(); loadLog(); checkIaEstado(); }, 300000);
 })();
 </script>

@@ -44,7 +44,24 @@ def api_documentos():
         "fecha_desde": request.args.get("fecha_desde"),
         "fecha_hasta": request.args.get("fecha_hasta"),
     }
-    docs = database.get_documents({k: v for k, v in filters.items() if v})
+    filters = {k: v for k, v in filters.items() if v}
+
+    # Paginación en el propio SQL: si no se pide página, se devuelve todo (compatibilidad
+    # con /api/exportar y otros usos que quieren el listado completo).
+    page = request.args.get("page", type=int)
+    page_size = request.args.get("page_size", type=int) or 10
+    if page:
+        page = max(1, page)
+        page_size = max(1, min(page_size, 100))
+        docs = database.get_documents(filters, limit=page_size, offset=(page - 1) * page_size)
+        return jsonify({
+            "items": docs,
+            "total": database.count_documents(filters),
+            "page": page,
+            "page_size": page_size,
+        })
+
+    docs = database.get_documents(filters)
     return jsonify(docs)
 
 
@@ -60,11 +77,18 @@ def api_actualizaciones():
 
 @app.route("/api/actualizar", methods=["POST"])
 def api_actualizar():
-    try:
-        nuevos = updater.run_update()
-        return jsonify({"ok": True, "nuevos": nuevos, "timestamp": datetime.now().isoformat()})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    # Arranca la actualización EN SEGUNDO PLANO y responde al instante: el scraping
+    # de varias fuentes + IA puede tardar minutos. La página consulta
+    # /api/actualizar/estado para saber cuándo termina (mismo patrón que el detective).
+    iniciada, msg = updater.lanzar()
+    if not iniciada:
+        return jsonify({"ok": False, "error": msg, "en_curso": True}), 409
+    return jsonify({"ok": True, "iniciada": True, "mensaje": msg})
+
+
+@app.route("/api/actualizar/estado")
+def api_actualizar_estado():
+    return jsonify(updater.estado_actual())
 
 
 @app.route("/api/ia/estado")
@@ -161,7 +185,27 @@ def api_informe_descargar(doc_id):
 
 @app.route("/api/investigaciones")
 def api_investigaciones():
-    return jsonify(database.get_investigaciones())
+    filters = {
+        "certeza": request.args.get("certeza"),
+        "categoria": request.args.get("categoria"),
+        "busqueda": request.args.get("busqueda"),
+    }
+    filters = {k: v for k, v in filters.items() if v}
+
+    page = request.args.get("page", type=int)
+    page_size = request.args.get("page_size", type=int) or 8
+    if page:
+        page = max(1, page)
+        page_size = max(1, min(page_size, 50))
+        invs = database.get_investigaciones(filters, limit=page_size, offset=(page - 1) * page_size)
+        return jsonify({
+            "items": invs,
+            "total": database.count_investigaciones(filters),
+            "page": page,
+            "page_size": page_size,
+            "categorias": database.get_categorias_investigaciones(),
+        })
+    return jsonify(database.get_investigaciones(filters))
 
 
 @app.route("/api/investigacion/<inv_id>/pdf")
@@ -247,7 +291,7 @@ def create_app():
 
     if config.AUTO_UPDATE_ENABLED:
         scheduler.add_job(
-            updater.run_update, "cron",
+            updater.actualizar_auto, "cron",
             hour=config.UPDATE_HOUR, minute=config.UPDATE_MINUTE,
             id="actualizacion_diaria"
         )
@@ -302,4 +346,7 @@ if __name__ == "__main__":
         print(f"  Informes PDF automáticos: cada {config.INFORMES_INTERVAL_MIN} min "
               f"(se pausan si se agota la cuota de Gemini)")
     print("=" * 60 + "\n")
-    app.run(host=config.HOST, debug=False, port=config.PORT, use_reloader=False)
+    # threaded=True: sin esto, Werkzeug atiende una petición a la vez y cualquier
+    # operación larga (actualizar fuentes, generar un informe con IA) congela TODA
+    # la app para cualquier otra pestaña/petición hasta que termina.
+    app.run(host=config.HOST, debug=False, port=config.PORT, use_reloader=False, threaded=True)

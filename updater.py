@@ -15,6 +15,7 @@ import html
 import hashlib
 import logging
 import os
+import threading
 from datetime import datetime
 from urllib.parse import urljoin, quote
 
@@ -337,6 +338,58 @@ def run_update():
             database.log_update("IA auto-análisis", 0, 0, "ERROR", str(e)[:200])
 
     return total_nuevos
+
+
+# ---------------------------------------------------------------------------
+# Ejecución en segundo plano (mismo patrón que detective.py): un cerrojo
+# compartido por el botón "Actualizar ahora" y el planificador diario, para que
+# la petición HTTP no se quede colgada los minutos que tarda el scraping + IA.
+# ---------------------------------------------------------------------------
+
+_lock = threading.Lock()
+_estado = {
+    "en_curso": False,
+    "desde": None,
+    "ultimo_fin": None,
+    "ultimo_nuevos": None,
+    "ultimo_error": None,
+}
+
+
+def estado_actual():
+    """Copia del estado de la actualización en segundo plano (para la API/UI)."""
+    return dict(_estado)
+
+
+def _run():
+    try:
+        nuevos = run_update()
+        _estado["ultimo_nuevos"] = nuevos
+        _estado["ultimo_error"] = None
+    except Exception as e:
+        _estado["ultimo_error"] = str(e)
+        log.error(f"  Actualización error: {e}")
+    finally:
+        _estado["en_curso"] = False
+        _estado["ultimo_fin"] = datetime.now().isoformat()
+        _lock.release()
+
+
+def lanzar():
+    """Inicia una actualización en segundo plano si no hay otra en curso.
+       Devuelve (iniciada: bool, mensaje: str). NO bloquea."""
+    if not _lock.acquire(blocking=False):
+        return False, "Ya hay una actualización en curso; espera a que termine."
+    _estado.update(en_curso=True, desde=datetime.now().isoformat(), ultimo_error=None)
+    threading.Thread(target=_run, daemon=True).start()
+    return True, "Actualización iniciada."
+
+
+def actualizar_auto():
+    """Entrada para el planificador: lanza una actualización si no hay otra activa."""
+    iniciada, msg = lanzar()
+    if not iniciada:
+        log.info(f"  Actualización auto: {msg}")
 
 
 if __name__ == "__main__":

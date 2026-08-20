@@ -43,8 +43,12 @@ el navegador en **http://localhost:5790**. Para detenerlo, `Ctrl + C` en la cons
 
 ```bash
 pip install -r requirements.txt
+copy config.example.py config.py    # (o: cp config.example.py config.py en Mac/Linux)
 python app.py        # o python3 app.py en Mac/Linux
 ```
+
+`config.py` es tuyo, no se sube al repositorio (ver la sección de claves más abajo);
+`config.example.py` es la plantilla que sí se versiona.
 
 ## Qué hace
 
@@ -63,7 +67,22 @@ python app.py        # o python3 app.py en Mac/Linux
 
 Edita `LLM_BACKEND` en `config.py`:
 
-### Opción 1 — LM Studio local (recomendado, sin límites)
+### Opción 1 — OpenRouter (recomendado, en la nube)
+
+1. Crea una clave gratuita en [openrouter.ai/keys](https://openrouter.ai/keys).
+2. En `config.py`:
+   ```
+   LLM_BACKEND = "openrouter"
+   OPENROUTER_API_KEY = "tu_clave_aqui"
+   OPENROUTER_MODEL = "openai/gpt-oss-120b"   # o cualquier otro modelo de openrouter.ai/models
+   ```
+3. Reinicia.
+
+No depende de tu CPU: corre en la infraestructura de OpenRouter, así que va mucho
+más rápido y fiable que un modelo local. Requiere internet; algunos modelos son
+gratuitos, otros tienen coste por token (revísalo en openrouter.ai/models).
+
+### Opción 2 — LM Studio local (sin límites, pero lento en CPU)
 
 1. Instala [LM Studio](https://lmstudio.ai).
 2. Descarga y carga un modelo (recomendado: **Qwen3 8B/9B** o **Qwen2.5 7B Instruct**).
@@ -75,9 +94,10 @@ Edita `LLM_BACKEND` en `config.py`:
    ```
 5. Reinicia.
 
-Sin límites de uso, privado y gratis. Va más lento sin GPU.
+Sin límites de uso, 100% privado y gratis. Va bastante más lento sin GPU
+(un dossier del detective puede tardar minutos).
 
-### Opción 2 — Gemini (opcional, plan gratuito limitado)
+### Opción 3 — Gemini (opcional, plan gratuito limitado)
 
 1. Crea una clave gratuita en [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 2. En `config.py`:
@@ -87,10 +107,10 @@ Sin límites de uso, privado y gratis. Va más lento sin GPU.
    ```
 3. Reinicia.
 
-> 🔐 **Si subes el proyecto a GitHub, NUNCA subas tu clave de Gemini.** La línea
-> `config.py` contiene la variable vacía por defecto. Considera moverla a una
-> variable de entorno `GEMINI_API_KEY` (el código la lee también de ahí), o
-> añade `config.py` a tu `.gitignore`.
+> 🔐 **Tus claves nunca se suben a GitHub.** `config.py` está en `.gitignore` —
+> es tuyo, vive solo en tu máquina. La plantilla sin secretos que sí se sube es
+> `config.example.py`. Alternativa: define las claves como variables de entorno
+> (`GEMINI_API_KEY`, `OPENROUTER_API_KEY`); el código las lee también de ahí.
 
 ## Marcas
 
@@ -105,18 +125,22 @@ Sin límites de uso, privado y gratis. Va más lento sin GPU.
 
 ```
 app.py              Servidor Flask + planificador
-config.py           Configuración (motor LLM, fuentes, horarios)
-database.py         SQLite (documentos + investigaciones, tablas separadas)
-updater.py          Ingestor de fuentes (NARA, FBI Vault, archive.org)
+config.example.py   Plantilla de configuración (se sube; sin secretos)
+config.py           Tu configuración real (no se sube; claves, motor LLM, horarios)
+database.py         SQLite (documentos + investigaciones, tablas separadas, paginación)
+updater.py          Ingestor de fuentes (NARA, FBI Vault, archive.org) + actualización en segundo plano
 gemini.py           Backend LLM Gemini (opcional)
-llm.py              Capa intercambiable (Gemini / LM Studio)
+llm.py              Capa intercambiable (Gemini / LM Studio / OpenRouter)
 detective.py        Detective conspiranoico autónomo + búsqueda web
 informe.py          Generación de informes PDF
 templates/
-  index.html        Página de documentos (paginada)
-  investigaciones.html  Página de dossiers del detective
+  index.html        Página de documentos (paginada en servidor)
+  investigaciones.html  Página de dossiers del detective (paginada en servidor)
 static/css/
   style.css         Tema visual
+static/js/
+  icons.js          Sistema de iconos SVG en línea compartido por las dos páginas
+tests/               Tests unitarios y de integración (pytest)
 data/               (generado, no se sube) base de datos e informes
 requirements.txt    Dependencias
 iniciar.bat         Arranque rápido en Windows

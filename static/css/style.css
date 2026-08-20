@@ -17,7 +17,7 @@
   /* texto */
   --text:      #e6e9ef;
   --text-2:    #aeb8c6;
-  --muted:     #6d7888;
+  --muted:     #7d8797;  /* AA (4.5:1) sobre --bg incluso en texto pequeño; el tono anterior no llegaba */
 
   /* acento principal (ámbar archivístico) */
   --accent:        #d8a24a;
@@ -69,6 +69,35 @@ a { color: var(--accent-2); text-decoration: none; }
 a:hover { text-decoration: underline; }
 ::selection { background: rgba(216,162,74,0.28); color: #fff; }
 
+/* Foco de teclado visible en toda la app (tarjetas, botones, enlaces, controles) */
+a:focus-visible, button:focus-visible, .btn:focus-visible,
+[tabindex]:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 4px;
+}
+
+/* ============================ ICONOS ============================ */
+.icon { flex-shrink: 0; vertical-align: -3px; }
+.empty-icon { color: var(--muted); opacity: 0.75; margin-bottom: 14px; display: flex; justify-content: center; }
+
+/* Indicador de estado (motor IA / detective / actualización) */
+.status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; flex-shrink: 0; }
+.status-dot.ok    { background: var(--alto);   box-shadow: 0 0 0 3px rgba(84,185,138,0.18); }
+.status-dot.busy  { background: var(--medio);  box-shadow: 0 0 0 3px rgba(216,162,74,0.18); animation: dotPulse 1.4s ease-in-out infinite; }
+.status-dot.off   { background: var(--danger); box-shadow: 0 0 0 3px rgba(224,101,94,0.18); }
+@keyframes dotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* Banner informativo (sustituye a los estilos inline en index.html) */
+.banner { display: flex; gap: 12px; align-items: flex-start; background: var(--accent-soft);
+  border: 1px solid var(--accent-border); border-radius: var(--radius-sm); padding: 14px 18px;
+  margin-bottom: 20px; color: var(--text); font-size: 13px; line-height: 1.6; }
+.banner .icon { margin-top: 2px; color: var(--accent-2); }
+.banner code { background: var(--surface2); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); }
+
+/* Colores de cifra en las stat-cards (sustituyen a style="color:..." inline) */
+.stat-card .num.c-danger { color: var(--danger); }
+.stat-card .num.c-alto   { color: var(--alto); }
+.stat-card .num.c-medio  { color: var(--medio); }
+
 /* scrollbar */
 ::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: var(--bg-2); }
@@ -106,6 +135,7 @@ nav {
   font-family: var(--mono); font-size: 12px;
   letter-spacing: 1px; text-transform: uppercase;
   border: 1px solid transparent; transition: all 0.18s ease;
+  display: inline-flex; align-items: center; gap: 8px;
 }
 .nav-tab:hover { color: var(--text); background: var(--surface2); text-decoration: none; }
 .nav-tab.active {
@@ -139,6 +169,7 @@ nav {
   font-size: 11px; color: var(--muted); padding: 5px 10px;
   background: var(--surface2); border-radius: var(--radius-sm);
   border: 1px solid var(--border); font-family: var(--mono);
+  display: inline-flex; align-items: center;
 }
 
 .container { max-width: 1320px; margin: 0 auto; padding: 28px 24px 56px; position: relative; z-index: 1; }
@@ -200,12 +231,12 @@ nav {
 .stat-card:hover { transform: translateY(-2px); border-color: var(--border-2); }
 .stat-card:hover::before { opacity: 0.8; }
 .stat-card .num { font-size: 30px; font-weight: 800; color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; line-height: 1.1; }
-.stat-card .lbl { font-size: 11px; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.6px; font-family: var(--mono); }
+.stat-card .lbl { font-size: 11px; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.6px; font-family: var(--mono); display: flex; align-items: center; gap: 6px; }
 
 /* ============================ CHARTS ============================ */
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
 .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
-.chart-card h3 { font-size: 12px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 16px; font-family: var(--mono); font-weight: 600; }
+.chart-card h3 { font-size: 12px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 16px; font-family: var(--mono); font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; font-size: 12.5px; }
 .bar-label { width: 168px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
 .bar-track { flex: 1; background: var(--surface3); border-radius: 100px; height: 8px; overflow: hidden; }
@@ -338,7 +369,7 @@ nav {
 .inv-img:hover img { transform: scale(1.06); }
 .inv-img .cap { position: absolute; bottom: 0; left: 0; right: 0; padding: 5px 7px; background: linear-gradient(transparent, rgba(0,0,0,0.85)); color: #d6dae0; font-size: 9px; text-align: center; font-family: var(--mono); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .inv-block { margin-bottom: 16px; }
-.inv-block h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); margin-bottom: 8px; font-weight: 600; }
+.inv-block h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-family: var(--mono); margin-bottom: 8px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .inv-block.hechos h4 { color: var(--alto); }
 .inv-block.hipotesis h4 { color: var(--accent-2); }
 .inv-block.especulacion h4 { color: var(--danger); }
@@ -353,7 +384,7 @@ nav {
 
 /* ============================ LOG ============================ */
 .log-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 36px; }
-.log-section h2 { font-size: 13px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 14px; font-family: var(--mono); font-weight: 600; }
+.log-section h2 { font-size: 13px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 14px; font-family: var(--mono); font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .log-table th { text-align: left; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--border-2); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.6px; font-family: var(--mono); }
 .log-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--text-2); }
@@ -365,8 +396,8 @@ nav {
 
 /* ============================ ESTADOS ============================ */
 .empty { text-align: center; padding: 70px 20px; color: var(--muted); }
-.empty .icon { font-size: 44px; margin-bottom: 16px; opacity: 0.7; }
 .loader { text-align: center; padding: 48px; color: var(--muted); font-family: var(--mono); font-size: 13px; }
+.loader .icon { vertical-align: -3px; margin-right: 8px; animation: spin 1.1s linear infinite; }
 .spinner { display: inline-block; width: 22px; height: 22px; border: 2.5px solid var(--border-2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 10px; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

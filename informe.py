@@ -394,11 +394,8 @@ def generar_informe(doc_id, forzar=False):
 
 def listar_pendientes():
     """IDs de documentos que aún no tienen su informe PDF generado."""
-    pend = []
-    for d in database.get_documents():
-        if not os.path.exists(os.path.join(INFORMES_DIR, f"{d['id']}.pdf")):
-            pend.append(d["id"])
-    return pend
+    return [doc_id for doc_id in database.get_all_document_ids()
+            if not os.path.exists(os.path.join(INFORMES_DIR, f"{doc_id}.pdf"))]
 
 
 def _es_error_cuota(msg):
