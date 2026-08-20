@@ -14,6 +14,7 @@
   <div class="nav-tabs">
     <a class="nav-tab" href="/"><span data-icon="folder"></span>Documentos</a>
     <a class="nav-tab active" href="/investigaciones"><span data-icon="search"></span>Investigaciones</a>
+    <a class="nav-tab" href="/conexiones"><span data-icon="network"></span>Conexiones</a>
   </div>
   <div class="nav-right">
     <span id="detective-status"><span class="status-dot off"></span>Cargando…</span>
@@ -45,6 +46,7 @@
       <input type="text" id="tema-input" placeholder="Investiga un tema concreto… (p. ej. Bohemian Grove 2026)"
              onkeydown="if(event.key==='Enter') investigarTema()">
       <button class="btn btn-detective" id="btn-tema" onclick="investigarTema()"><span data-icon="search"></span>Investigar tema</button>
+      <button class="btn" onclick="encolarTema()" title="Guardar el tema para que el detective lo investigue en su próximo ciclo automático"><span data-icon="inbox"></span>Añadir a la cola</button>
     </div>
     <div class="dc-group dc-filtros">
       <input type="text" id="inv-search" placeholder="Filtrar dossiers…" oninput="debounceInvLoad()">
@@ -56,6 +58,10 @@
       </select>
       <select id="inv-cat" onchange="loadInvestigaciones(1)"><option value="">Categoría: todas</option></select>
     </div>
+  </div>
+  <div class="tema-queue" id="tema-queue" style="display:none">
+    <div class="graph-hint">En cola para el próximo ciclo automático del detective:</div>
+    <div class="tema-queue-list" id="tema-queue-list"></div>
   </div>
 
   <div class="results-bar"><span id="inv-count">—</span></div>
@@ -139,6 +145,10 @@ async function loadInvestigaciones(page) {
     const r = await fetch('/api/investigaciones?' + params.toString());
     const data = await r.json();
     totalInvs = data.total;
+    // Si se borró el último dossier de la página actual, retrocede una página.
+    if (!data.items.length && totalInvs > 0 && currentPage > 1) {
+      return loadInvestigaciones(currentPage - 1);
+    }
     poblarCategorias(data.categorias || []);
     renderInvList(data.items || []);
   } catch(e) {}
@@ -185,6 +195,45 @@ function renderInvPagination(totalPages) {
     <button class="btn" onclick="loadInvestigaciones(${totalPages})" ${currentPage===totalPages?'disabled':''}>última »</button>`;
 }
 
+async function loadCola() {
+  try {
+    const cola = await (await fetch('/api/temas')).json();
+    const box = document.getElementById('tema-queue');
+    const list = document.getElementById('tema-queue-list');
+    if (!cola.length) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    list.innerHTML = cola.map(t => `<span class="tema-chip">${escHtml(t.tema)}`
+      + `<button onclick="borrarTemaCola(${t.id})" title="Quitar de la cola">${iconSvg('x',{size:11})}</button></span>`).join('');
+  } catch(e) {}
+}
+
+async function encolarTema() {
+  const input = document.getElementById('tema-input');
+  const tema = input.value.trim();
+  if (!tema) { showToast('Escribe un tema primero.'); return; }
+  try {
+    const r = await fetch('/api/temas', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({tema}) });
+    const d = await r.json();
+    if (d.ok) { input.value = ''; showToast('Tema añadido a la cola.'); loadCola(); }
+    else showToast(d.error || 'No se pudo añadir a la cola.');
+  } catch(e) { showToast('Sin conexión.'); }
+}
+
+async function borrarTemaCola(id) {
+  try { await fetch('/api/temas/'+id, { method: 'DELETE' }); loadCola(); } catch(e) {}
+}
+
+async function generarContraargumento(id, btnEl) {
+  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = iconSvg('help-circle',{size:14}) + 'Pensando…';
+  showToast('Generando réplica escéptica…');
+  try {
+    const r = await fetch('/api/investigacion/'+encodeURIComponent(id)+'/contraargumento', {method:'POST'});
+    const d = await r.json();
+    if (d.ok) { showToast('Réplica escéptica lista.'); await loadInvestigaciones(currentPage); }
+    else { showToast(d.error || 'No se pudo generar.'); btnEl.disabled = false; btnEl.innerHTML = o; }
+  } catch(e) { showToast('Sin conexión.'); btnEl.disabled = false; btnEl.innerHTML = o; }
+}
+
 function lista(arr) {
   return (arr && arr.length) ? '<ul>' + arr.map(x => `<li>${escHtml(x)}</li>`).join('') + '</ul>' : '<div style="color:var(--muted);font-size:12px">—</div>';
 }
@@ -199,22 +248,45 @@ function render(v) {
     </a>`).join('');
   const cat = v.categoria ? `<span class="inv-cat">${iconSvg('tag',{size:11})} ${escHtml(v.categoria)}</span>` : '';
   const certClass = 'cert-' + (v.nivel_certeza || 'MEDIO');
+  const respaldo = (v.documentos_relacionados && v.documentos_relacionados.length) ? `
+    <div class="inv-respaldo"><h4>${iconSvg('check-circle',{size:12})}Respaldo en el archivo oficial</h4>${
+      v.documentos_relacionados.map(d => `<a href="/?busqueda=${encodeURIComponent(d.titulo)}" target="_blank">${escHtml(d.titulo)}</a>`).join('')
+    }</div>` : '';
+  const contraBlock = v.contraargumento ? `
+    <div class="inv-block"><h4 style="color:var(--info)">${iconSvg('help-circle',{size:13})}Voz escéptica</h4><div class="inv-contraargumento">${escHtml(v.contraargumento)}</div></div>` : '';
+  const contraBtn = v.contraargumento ? '' :
+    `<button class="btn btn-skeptic" onclick="generarContraargumento('${v.id}', this)">${iconSvg('help-circle',{size:14})}Réplica escéptica</button>`;
   return `
   <div class="inv-card">
     <div class="inv-titulo">${escHtml(v.titulo || v.tema)}</div>
     <div class="inv-meta">${escHtml(v.id)} · ${escHtml(fecha)} · ${cat} <span class="${certClass}">certeza: ${escHtml(v.nivel_certeza||'—')}</span> · ${escHtml(v.motor||'')}</div>
     ${v.gancho ? `<div class="inv-gancho">${escHtml(v.gancho)}</div>` : ''}
+    ${respaldo}
     ${imgs ? `<div class="inv-images">${imgs}</div>` : ''}
     <div class="inv-block hechos"><h4>${iconSvg('check-circle',{size:13})}Hechos verificados</h4>${lista(v.hechos_verificados)}</div>
     <div class="inv-block hipotesis"><h4>${iconSvg('eye',{size:13})}Hipótesis y conexiones</h4>${lista(v.hipotesis)}</div>
     ${(v.conexiones&&v.conexiones.length)?`<div class="inv-block conexiones"><h4>${iconSvg('link',{size:13})}Patrones / símbolos</h4>${lista(v.conexiones)}</div>`:''}
     <div class="inv-block especulacion"><h4>${iconSvg('alert-triangle',{size:13})}Especulación (NO probado)</h4>${lista(v.especulacion)}</div>
     <div class="inv-block"><h4 style="color:var(--text)">${iconSvg('activity',{size:13})}Veredicto del analista</h4><div class="inv-veredicto">${escHtml(v.veredicto||'—')}</div></div>
+    ${contraBlock}
     ${fuentes ? `<div class="inv-fuentes"><strong style="color:var(--muted)">Fuentes:</strong><br>${fuentes}</div>` : ''}
     <div class="inv-actions">
       <a class="btn btn-informe" href="/api/investigacion/${encodeURIComponent(v.id)}/pdf">${iconSvg('download',{size:14})}Descargar dossier (PDF)</a>
+      ${contraBtn}
+      <button class="btn btn-danger" onclick="borrarInvestigacion('${v.id}', this)">${iconSvg('trash',{size:14})}Borrar</button>
     </div>
   </div>`;
+}
+
+async function borrarInvestigacion(id, btnEl) {
+  if (!confirm('¿Borrar este dossier? No se puede deshacer.')) return;
+  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = iconSvg('trash',{size:14}) + 'Borrando…';
+  try {
+    const r = await fetch('/api/investigacion/'+encodeURIComponent(id), { method: 'DELETE' });
+    const d = await r.json();
+    if (d.ok) { showToast('Dossier borrado.'); await loadInvestigaciones(currentPage); }
+    else { showToast(d.error || 'No se pudo borrar.'); btnEl.disabled = false; btnEl.innerHTML = o; }
+  } catch(e) { showToast('Sin conexión.'); btnEl.disabled = false; btnEl.innerHTML = o; }
 }
 
 async function investigar(tema) {
@@ -257,8 +329,8 @@ function escAttr2(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace
 
 (async function() {
   mountIcons();
-  await Promise.all([loadInvestigaciones(1), checkEstado()]);
-  setInterval(() => { loadInvestigaciones(currentPage); checkEstado(); }, 60000);
+  await Promise.all([loadInvestigaciones(1), checkEstado(), loadCola()]);
+  setInterval(() => { loadInvestigaciones(currentPage); checkEstado(); loadCola(); }, 60000);
 })();
 </script>
 </body>

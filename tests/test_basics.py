@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gemini      # noqa: E402
 import detective   # noqa: E402
 import database    # noqa: E402
+import analisis    # noqa: E402
 
 
 # --- gemini._parse_json: el punto más frágil con modelos locales (Qwen) ---
@@ -83,6 +84,75 @@ def test_get_documents_filtra_por_pais():
         database.insert_document({"id": "B", "titulo": "Documento dos de EEUU", "pais": "EE. UU."})
         res = database.get_documents({"pais": "España"})
         assert len(res) == 1 and res[0]["id"] == "A"
+    _con_db_temporal(cuerpo)
+
+
+# --- cola de temas: el detective la consume antes que el banco semilla ---
+
+def test_cola_de_temas_fifo():
+    def cuerpo():
+        assert database.pop_tema_cola() is None   # vacía al empezar
+        database.encolar_tema("Primero")
+        database.encolar_tema("Segundo")
+        assert [t["tema"] for t in database.get_cola_temas()] == ["Primero", "Segundo"]
+        assert database.pop_tema_cola() == "Primero"   # FIFO
+        assert [t["tema"] for t in database.get_cola_temas()] == ["Segundo"]
+    _con_db_temporal(cuerpo)
+
+
+def test_elegir_tema_local_prioriza_la_cola():
+    def cuerpo():
+        database.encolar_tema("Tema encolado por el usuario")
+        tema, busquedas = detective._elegir_tema_local()
+        assert tema == "Tema encolado por el usuario"
+        assert busquedas  # se derivan búsquedas igual que con un tema del banco semilla
+    _con_db_temporal(cuerpo)
+
+
+def test_eliminar_tema_cola():
+    def cuerpo():
+        database.encolar_tema("Un tema")
+        tema_id = database.get_cola_temas()[0]["id"]
+        assert database.eliminar_tema_cola(tema_id) is True
+        assert database.eliminar_tema_cola(tema_id) is False   # ya no existe
+    _con_db_temporal(cuerpo)
+
+
+# --- analisis.py: extracción de entidades y grafo de conexiones ---
+
+def test_extraer_terminos_reconoce_entidades_conocidas():
+    terminos = analisis.extraer_terminos("La CIA y el MK-Ultra siguen investigándose en Área 51.")
+    assert "CIA" in terminos
+    assert "MK-Ultra" in terminos
+    assert "Área 51" in terminos
+
+
+def test_extraer_terminos_descarta_inicio_de_frase_generico():
+    # "Existen" y "Documentos" son inicios de viñeta genéricos, no entidades.
+    terminos = analisis.extraer_terminos("Existen documentos que lo confirman. Documentos oficiales.")
+    assert "Existen" not in terminos
+    assert "Documentos" not in terminos
+
+
+def test_calcular_conexiones_conecta_dossiers_con_entidad_compartida():
+    def cuerpo():
+        database.insert_investigacion({
+            "id": "INV-A", "tema": "t1", "titulo": "El caso de la CIA y Roswell",
+            "hipotesis": ["La CIA ocultó pruebas en Roswell"],
+        })
+        database.insert_investigacion({
+            "id": "INV-B", "tema": "t2", "titulo": "Roswell: nuevas pistas",
+            "hipotesis": ["Roswell sigue sin explicación oficial"],
+        })
+        database.insert_investigacion({
+            "id": "INV-C", "tema": "t3", "titulo": "Un caso sin relación",
+            "hipotesis": ["Nada que ver con los otros dos"],
+        })
+        r = analisis.calcular_conexiones()
+        assert len(r["nodos"]) == 3
+        pares = {frozenset((a["a"], a["b"])) for a in r["aristas"]}
+        assert frozenset(("INV-A", "INV-B")) in pares
+        assert frozenset(("INV-A", "INV-C")) not in pares
     _con_db_temporal(cuerpo)
 
 

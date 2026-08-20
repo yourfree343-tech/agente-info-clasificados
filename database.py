@@ -306,6 +306,14 @@ def init_db():
             categoria TEXT
         )
     """)
+    # Cola de temas sugeridos por el usuario: el detective la consume antes que el banco semilla.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS temas_cola (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tema TEXT NOT NULL,
+            creado TEXT
+        )
+    """)
     # Migración: añadir columnas nuevas si la tabla ya existía sin ellas
     c.execute("PRAGMA table_info(investigaciones)")
     cols_inv = {r["name"] for r in c.fetchall()}
@@ -313,6 +321,10 @@ def init_db():
         c.execute("ALTER TABLE investigaciones ADD COLUMN imagenes TEXT")
     if "categoria" not in cols_inv:
         c.execute("ALTER TABLE investigaciones ADD COLUMN categoria TEXT")
+    if "documentos_relacionados" not in cols_inv:
+        c.execute("ALTER TABLE investigaciones ADD COLUMN documentos_relacionados TEXT")
+    if "contraargumento" not in cols_inv:
+        c.execute("ALTER TABLE investigaciones ADD COLUMN contraargumento TEXT")
     conn.commit()
     _migrate(conn)
     conn.close()
@@ -614,7 +626,8 @@ def set_titulo(doc_id, nuevo_titulo):
     conn.close()
 
 
-_INV_JSON = ("hechos_verificados", "hipotesis", "especulacion", "conexiones", "fuentes", "imagenes")
+_INV_JSON = ("hechos_verificados", "hipotesis", "especulacion", "conexiones", "fuentes",
+             "imagenes", "documentos_relacionados")
 
 
 def insert_investigacion(inv):
@@ -622,8 +635,9 @@ def insert_investigacion(inv):
     conn.execute("""
         INSERT OR REPLACE INTO investigaciones
         (id, fecha, tema, titulo, gancho, hechos_verificados, hipotesis,
-         especulacion, conexiones, veredicto, nivel_certeza, fuentes, motor, imagenes, categoria)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         especulacion, conexiones, veredicto, nivel_certeza, fuentes, motor, imagenes, categoria,
+         documentos_relacionados, contraargumento)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         inv["id"], inv.get("fecha", ""), inv.get("tema", ""), inv.get("titulo", ""),
         inv.get("gancho", ""),
@@ -636,9 +650,77 @@ def insert_investigacion(inv):
         inv.get("motor", ""),
         json.dumps(inv.get("imagenes", []), ensure_ascii=False),
         inv.get("categoria", ""),
+        json.dumps(inv.get("documentos_relacionados", []), ensure_ascii=False),
+        inv.get("contraargumento") or "",
     ))
     conn.commit()
     conn.close()
+
+
+def set_contraargumento(inv_id, texto):
+    conn = get_connection()
+    conn.execute("UPDATE investigaciones SET contraargumento = ? WHERE id = ?", (texto, inv_id))
+    conn.commit()
+    conn.close()
+
+
+def buscar_documentos_por_texto(terminos, limit=3):
+    """Busca documentos OFICIALES cuyo título mencione alguno de los términos dados.
+       Usado para enlazar cada dossier del detective con respaldo oficial si existe."""
+    terminos = [t for t in (terminos or []) if t and len(t) >= 4][:5]
+    if not terminos:
+        return []
+    conn = get_connection()
+    c = conn.cursor()
+    clauses = ["titulo LIKE ?"] * len(terminos)
+    params = [f"%{t}%" for t in terminos] + [limit]
+    c.execute(f"SELECT id, titulo, url_fuente FROM documentos WHERE {' OR '.join(clauses)} LIMIT ?", params)
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+
+# --- Cola de temas sugeridos por el usuario (el detective la consume antes que el banco semilla) ---
+
+def encolar_tema(tema):
+    conn = get_connection()
+    conn.execute("INSERT INTO temas_cola (tema, creado) VALUES (?, ?)", (tema, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+
+
+def get_cola_temas():
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, tema, creado FROM temas_cola ORDER BY id ASC")
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+
+def pop_tema_cola():
+    """Saca (y borra) el primer tema en cola, o None si está vacía. Lo consume el detective."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT id, tema FROM temas_cola ORDER BY id ASC LIMIT 1")
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return None
+    c.execute("DELETE FROM temas_cola WHERE id = ?", (row["id"],))
+    conn.commit()
+    conn.close()
+    return row["tema"]
+
+
+def eliminar_tema_cola(tema_id):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM temas_cola WHERE id = ?", (tema_id,))
+    borrado = c.rowcount > 0
+    conn.commit()
+    conn.close()
+    return borrado
 
 
 def get_temas_investigados(limit=40):
@@ -720,6 +802,17 @@ def get_investigacion(inv_id):
         except Exception:
             d[f] = []
     return d
+
+
+def delete_investigacion(inv_id):
+    """Borra un dossier del detective por su id. Devuelve True si existía."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM investigaciones WHERE id = ?", (inv_id,))
+    borrado = c.rowcount > 0
+    conn.commit()
+    conn.close()
+    return borrado
 
 
 def count_investigaciones(filters=None):

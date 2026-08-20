@@ -14,6 +14,7 @@ import gemini
 import informe
 import llm
 import detective
+import analisis
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -31,6 +32,11 @@ def index():
 @app.route("/investigaciones")
 def investigaciones_page():
     return render_template("investigaciones.html")
+
+
+@app.route("/conexiones")
+def conexiones_page():
+    return render_template("conexiones.html")
 
 
 @app.route("/api/documentos")
@@ -206,6 +212,50 @@ def api_investigaciones():
             "categorias": database.get_categorias_investigaciones(),
         })
     return jsonify(database.get_investigaciones(filters))
+
+
+@app.route("/api/investigacion/<inv_id>", methods=["DELETE"])
+def api_investigacion_borrar(inv_id):
+    borrado = database.delete_investigacion(inv_id)
+    if not borrado:
+        return jsonify({"ok": False, "error": "Dossier no encontrado."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/investigacion/<inv_id>/contraargumento", methods=["POST"])
+def api_investigacion_contraargumento(inv_id):
+    res = detective.generar_contraargumento(inv_id)
+    if not res.get("ok"):
+        return jsonify(res), 400
+    return jsonify(res)
+
+
+@app.route("/api/conexiones")
+def api_conexiones():
+    return jsonify(analisis.calcular_conexiones())
+
+
+@app.route("/api/temas")
+def api_temas_listar():
+    return jsonify(database.get_cola_temas())
+
+
+@app.route("/api/temas", methods=["POST"])
+def api_temas_encolar():
+    data = request.get_json(silent=True) or {}
+    tema = (data.get("tema") or "").strip()
+    if not tema:
+        return jsonify({"ok": False, "error": "Falta el tema."}), 400
+    database.encolar_tema(tema)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/temas/<int:tema_id>", methods=["DELETE"])
+def api_temas_borrar(tema_id):
+    borrado = database.eliminar_tema_cola(tema_id)
+    if not borrado:
+        return jsonify({"ok": False, "error": "No encontrado."}), 404
+    return jsonify({"ok": True})
 
 
 @app.route("/api/investigacion/<inv_id>/pdf")

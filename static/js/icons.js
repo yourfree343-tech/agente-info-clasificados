@@ -30,6 +30,16 @@ const ICONS = {
   tag: '<path d="M3.5 12.3V5a1.5 1.5 0 0 1 1.5-1.5h7.3L20.5 11.7l-8.2 8.2L3.5 12.3Z"/><circle cx="8" cy="8.5" r="1.1" fill="currentColor" stroke="none"/>',
   x: '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
   "plus-circle": '<circle cx="12" cy="12" r="8.5"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>',
+  trash: '<line x1="4" y1="7" x2="20" y2="7"/><path d="M9 7V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7"/>'
+    + '<path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+  network: '<circle cx="6" cy="6.5" r="2"/><circle cx="18" cy="6.5" r="2"/><circle cx="12" cy="18" r="2"/>'
+    + '<line x1="7.7" y1="7.6" x2="10.7" y2="16.2"/><line x1="16.3" y1="7.6" x2="13.3" y2="16.2"/><line x1="8" y1="6.5" x2="16" y2="6.5"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><line x1="12" y1="7" x2="12" y2="12.5"/><line x1="12" y1="12.5" x2="15.5" y2="14.5"/>',
+  inbox: '<path d="M4 12.5l2.6-7a1 1 0 0 1 .9-.6h9a1 1 0 0 1 .9.6l2.6 7"/>'
+    + '<path d="M4 12.5v5.5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5.5"/>'
+    + '<path d="M4 12.5h4.3l1.2 2h4.9l1.2-2H20"/>',
+  "help-circle": '<circle cx="12" cy="12" r="8.5"/><path d="M9.4 9.3a2.7 2.7 0 0 1 5.1 1c0 1.7-2.4 2-2.4 3.6"/>'
+    + '<circle cx="12" cy="16.9" r="0.6" fill="currentColor" stroke="none"/>',
 };
 
 function iconSvg(name, opts) {

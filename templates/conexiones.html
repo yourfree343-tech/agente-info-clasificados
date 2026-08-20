@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conexiones — Archivo Clasificado</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%95%B5%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="detective-page">
+
+<nav>
+  <div class="nav-brand"><span class="icon">👁️</span><span>Archivo·Clasificado</span></div>
+  <div class="nav-tabs">
+    <a class="nav-tab" href="/"><span data-icon="folder"></span>Documentos</a>
+    <a class="nav-tab" href="/investigaciones"><span data-icon="search"></span>Investigaciones</a>
+    <a class="nav-tab active" href="/conexiones"><span data-icon="network"></span>Conexiones</a>
+  </div>
+  <div class="nav-right"></div>
+</nav>
+
+<div class="container">
+
+  <header class="hero">
+    <span class="stamp">Tablero del detective</span>
+    <span class="hero-kicker">Análisis cruzado · 2026</span>
+    <h1 class="hero-title">Conexiones entre casos</h1>
+    <p class="hero-sub">Qué entidades se repiten entre los dossiers del detective, y en qué años se concentran los hechos que investiga. Cálculo automático: no interpretes las líneas como prueba de nada, solo como coincidencias de texto.</p>
+  </header>
+
+  <div class="conexiones-grid">
+    <div class="graph-card">
+      <h3><span data-icon="network"></span>Tablero de conexiones</h3>
+      <div class="graph-hint">Cada punto es un dossier; una línea significa que comparten una entidad específica (no un tema genérico). Pulsa un punto para ver el detalle.</div>
+      <div id="graph-wrap"><div class="graph-empty"><span class="spinner"></span>Calculando conexiones…</div></div>
+      <div class="graph-detail" id="graph-detail">Pulsa un caso del tablero para ver con qué otros conecta.</div>
+    </div>
+    <div>
+      <div class="graph-card" style="margin-bottom:16px">
+        <h3><span data-icon="tag"></span>Patrones recurrentes</h3>
+        <div id="rank-list" class="rank-list"><div class="graph-empty">Cargando…</div></div>
+      </div>
+      <div class="graph-card">
+        <h3><span data-icon="clock"></span>Línea temporal</h3>
+        <div class="graph-hint" style="margin-bottom:10px">Años mencionados en los hechos de todos los dossiers.</div>
+        <div id="timeline-list" class="rank-list"><div class="graph-empty">Cargando…</div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/static/js/icons.js"></script>
+<script>
+let graphData = null;
+let posById = {};
+
+async function loadConexiones() {
+  try {
+    const r = await fetch('/api/conexiones');
+    graphData = await r.json();
+  } catch (e) {
+    document.getElementById('graph-wrap').innerHTML = `<div class="graph-empty">No se pudo cargar el análisis.</div>`;
+    return;
+  }
+  renderGraph();
+  renderRanking();
+  renderTimeline();
+}
+
+function renderGraph() {
+  const wrap = document.getElementById('graph-wrap');
+  const nodos = graphData.nodos || [];
+  if (nodos.length < 2) {
+    wrap.innerHTML = `<div class="graph-empty">${iconSvg('box',{size:36})}<br>Hacen falta al menos dos dossiers para trazar conexiones.</div>`;
+    return;
+  }
+  const cx = 320, cy = 290, R = 225;
+  const n = nodos.length;
+  const colorCert = { ALTO: 'var(--alto)', MEDIO: 'var(--medio)', BAJO: 'var(--bajo)' };
+  posById = {};
+  nodos.forEach((node, i) => {
+    const angle = (i / n) * 2 * Math.PI - Math.PI / 2;
+    posById[node.id] = { x: cx + R * Math.cos(angle), y: cy + R * Math.sin(angle) };
+  });
+
+  const edgesHtml = (graphData.aristas || []).map(a => {
+    const p1 = posById[a.a], p2 = posById[a.b];
+    if (!p1 || !p2) return '';
+    const w = Math.min(1 + a.peso * 0.7, 4).toFixed(1);
+    return `<line class="edge" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke-width="${w}"><title>${escHtml(a.terminos.join(', '))}</title></line>`;
+  }).join('');
+
+  const nodesHtml = nodos.map(node => {
+    const p = posById[node.id];
+    const label = node.titulo.length > 15 ? node.titulo.slice(0, 15) + '…' : node.titulo;
+    const color = colorCert[node.certeza] || 'var(--muted)';
+    return `<g class="node ${node.conectado ? 'on' : ''}" data-id="${escAttr2(node.id)}" onclick="selectNode('${escAttr2(node.id)}')">
+      <circle cx="${p.x}" cy="${p.y}" r="9" style="fill:${color};fill-opacity:.55"><title>${escHtml(node.titulo)}</title></circle>
+      <text x="${p.x}" y="${p.y + 20}" text-anchor="middle">${escHtml(label)}</text>
+    </g>`;
+  }).join('');
+
+  wrap.innerHTML = `<svg class="graph-svg" viewBox="0 0 640 580" xmlns="http://www.w3.org/2000/svg">
+    <g class="edges">${edgesHtml}</g>
+    <g class="nodes">${nodesHtml}</g>
+  </svg>`;
+}
+
+function selectNode(id) {
+  document.querySelectorAll('#graph-wrap .node').forEach(el => el.classList.toggle('active', el.dataset.id === id));
+  const node = (graphData.nodos || []).find(n => n.id === id);
+  const detail = document.getElementById('graph-detail');
+  if (!node) return;
+  const conectadas = (graphData.aristas || []).filter(a => a.a === id || a.b === id);
+  if (!conectadas.length) {
+    detail.innerHTML = `<strong>${escHtml(node.titulo)}</strong> — sin conexiones específicas detectadas con otros casos.`;
+    return;
+  }
+  const lineas = conectadas.map(a => {
+    const otroId = a.a === id ? a.b : a.a;
+    const otro = (graphData.nodos || []).find(n => n.id === otroId);
+    return `— <strong>${escHtml(otro ? otro.titulo : otroId)}</strong> <span style="color:var(--muted)">(${escHtml(a.terminos.join(', '))})</span>`;
+  }).join('<br>');
+  detail.innerHTML = `<strong>${escHtml(node.titulo)}</strong> conecta con:<br>${lineas}`;
+}
+
+function renderRanking() {
+  const el = document.getElementById('rank-list');
+  const ranking = graphData.ranking || [];
+  if (!ranking.length) { el.innerHTML = '<div class="graph-empty">Sin patrones recurrentes todavía.</div>'; return; }
+  const max = Math.max(...ranking.map(r => r.n), 1);
+  el.innerHTML = ranking.map(r => `
+    <div class="rank-row"><div class="rank-label" title="${escHtml(r.termino)}">${escHtml(r.termino)}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${Math.round(r.n / max * 100)}%;background:var(--violet)"></div></div>
+    <div class="rank-val">${r.n}</div></div>`).join('');
+}
+
+function renderTimeline() {
+  const el = document.getElementById('timeline-list');
+  const linea = graphData.linea_temporal || [];
+  if (!linea.length) { el.innerHTML = '<div class="graph-empty">Sin años detectados en los hechos.</div>'; return; }
+  const max = Math.max(...linea.map(t => t.n), 1);
+  el.innerHTML = linea.map(t => `
+    <div class="rank-row"><div class="rank-label">${escHtml(t.anio)}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${Math.round(t.n / max * 100)}%;background:var(--info)"></div></div>
+    <div class="rank-val">${t.n}</div></div>`).join('');
+}
+
+function escHtml(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr2(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+
+mountIcons();
+loadConexiones();
+</script>
+</body>
+</html>

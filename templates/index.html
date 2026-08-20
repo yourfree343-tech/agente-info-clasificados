@@ -14,6 +14,7 @@
   <div class="nav-tabs">
     <a class="nav-tab active" href="/"><span data-icon="folder"></span>Documentos</a>
     <a class="nav-tab" href="/investigaciones"><span data-icon="search"></span>Investigaciones</a>
+    <a class="nav-tab" href="/conexiones"><span data-icon="network"></span>Conexiones</a>
   </div>
   <div class="nav-right">
     <span id="update-status"><span class="status-dot off"></span>Cargando…</span>
@@ -399,6 +400,9 @@ function escAttr(s) { if (!s) return '#'; if (!/^https?:\/\//i.test(s)) return '
 
 (async function() {
   mountIcons();
+  // Soporta enlazar aquí con una búsqueda ya rellenada (p. ej. desde "respaldo oficial" en un dossier).
+  const q = new URLSearchParams(window.location.search).get('busqueda');
+  if (q) document.getElementById('search-input').value = q;
   await Promise.all([loadDocs(1), loadStats(), loadLog(), checkIaEstado(), checkActualizarEstado()]);
   setInterval(() => { loadStats(); loadLog(); checkIaEstado(); }, 300000);
 })();

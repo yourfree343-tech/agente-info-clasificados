@@ -120,6 +120,54 @@ def test_investigacion_pdf_404(client):
     assert r.status_code == 404
 
 
+def test_investigacion_borrar_404(client):
+    r = client.delete("/api/investigacion/NOPE")
+    assert r.status_code == 404
+
+
+def test_investigacion_borrar_ok(client):
+    database.insert_investigacion({"id": "INV-T1", "tema": "tema de prueba", "titulo": "Caso de prueba"})
+    assert client.get("/api/investigaciones").get_json() != []
+    r = client.delete("/api/investigacion/INV-T1")
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+    assert client.get("/api/investigaciones").get_json() == []
+
+
+def test_contraargumento_dossier_no_encontrado(client):
+    r = client.post("/api/investigacion/NOPE/contraargumento")
+    assert r.status_code == 400
+
+
+def test_conexiones_endpoint(client):
+    r = client.get("/api/conexiones")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert set(data.keys()) == {"nodos", "aristas", "ranking", "linea_temporal"}
+
+
+def test_temas_cola_ciclo_completo(client):
+    assert client.get("/api/temas").get_json() == []
+
+    r = client.post("/api/temas", json={"tema": "Bohemian Grove 2026"})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+
+    r = client.post("/api/temas", json={"tema": ""})
+    assert r.status_code == 400   # tema vacío rechazado
+
+    cola = client.get("/api/temas").get_json()
+    assert len(cola) == 1
+    assert cola[0]["tema"] == "Bohemian Grove 2026"
+
+    tema_id = cola[0]["id"]
+    r = client.delete(f"/api/temas/{tema_id}")
+    assert r.status_code == 200
+    assert client.get("/api/temas").get_json() == []
+
+    r = client.delete(f"/api/temas/{tema_id}")
+    assert r.status_code == 404   # ya borrado
+
+
 def test_informe_descargar_404(client):
     r = client.get("/api/informe/NOPE")
     assert r.status_code == 404

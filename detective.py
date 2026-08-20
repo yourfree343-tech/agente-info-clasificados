@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 import config
 import database
 import llm
+import analisis
 
 log = logging.getLogger(__name__)
 
@@ -139,8 +140,12 @@ def _busquedas_desde_tema(tema):
 
 
 def _elegir_tema_local():
-    """Elige un tema del banco semilla, prefiriendo los que aún no se han usado.
-       Sustituye a la antigua llamada al LLM para 'elegir tema' (lenta y frágil en CPU)."""
+    """Elige un tema: primero de la cola sugerida por el usuario (FIFO); si está vacía,
+       del banco semilla, prefiriendo los que aún no se han usado. Sustituye a la antigua
+       llamada al LLM para 'elegir tema' (lenta y frágil en CPU)."""
+    en_cola = database.pop_tema_cola()
+    if en_cola:
+        return en_cola, _busquedas_desde_tema(en_cola)
     semillas = getattr(config, "DETECTIVE_TEMAS_SEMILLA", []) or ["una conspiración famosa"]
     ya = {(t or "").strip().lower() for t in database.get_temas_investigados(40)}
     frescas = [s for s in semillas if s.strip().lower() not in ya]
@@ -210,6 +215,13 @@ def investigar(tema=None):
         consulta_img = (d.get("titulo") or tema)
         imagenes = buscar_imagenes(consulta_img, n=n_imgs)
 
+    # Cruce con los documentos OFICIALES ya archivados: si alguno menciona las mismas
+    # entidades que este caso, se enlaza como respaldo real (las dos tablas, hasta ahora,
+    # vivían completamente separadas).
+    terminos_cruce = analisis.extraer_terminos(f"{tema} {d.get('titulo', '')}")
+    documentos_relacionados = database.buscar_documentos_por_texto(
+        list(dict.fromkeys(terminos_cruce)), limit=3)
+
     inv = {
         "id": "INV-" + datetime.now().strftime("%Y%m%d%H%M%S"),
         "fecha": datetime.now().isoformat(),
@@ -226,6 +238,7 @@ def investigar(tema=None):
         "motor": llm.nombre_motor(),
         "imagenes": imagenes,
         "categoria": categoria,
+        "documentos_relacionados": documentos_relacionados,
     }
     database.insert_investigacion(inv)
     log.info(f"  Detective: nuevo dossier '{inv['titulo'][:50]}' "
@@ -286,6 +299,46 @@ def lanzar(tema=None):
                    ultimo_error=None)
     threading.Thread(target=_run, args=(tema,), daemon=True).start()
     return True, (f"Investigando: {tema}" if tema else "Investigación iniciada.")
+
+
+# ---------------------------------------------------------------------------
+# Voz escéptica: contraargumento racional bajo demanda para un dossier ya existente.
+# ---------------------------------------------------------------------------
+
+PROMPT_CONTRAARGUMENTO = """Eres un escéptico profesional (divulgador científico, tipo investigador
+de fraudes y desinformación). Te doy un caso ya investigado por un panel conspiranoico. Tu trabajo
+es cuestionar sus hipótesis con la explicación más racional y probable: sesgos cognitivos, errores
+lógicos, coincidencias sobrevaloradas, falta de pruebas verificables, motivos mundanos. Sé concreto:
+señala qué parte exacta de la hipótesis es más débil. Escribe en ESPAÑOL, tono sobrio y directo.
+
+CASO: {titulo}
+HIPÓTESIS A CUESTIONAR: {hipotesis}
+ESPECULACIÓN: {especulacion}
+
+Devuelve EXCLUSIVAMENTE este JSON:
+{{"contraargumento": "3 a 6 frases con la explicación escéptica más probable"}}"""
+
+
+def generar_contraargumento(inv_id):
+    """Genera (o regenera) la réplica escéptica de un dossier ya guardado."""
+    inv = database.get_investigacion(inv_id)
+    if not inv:
+        return {"ok": False, "error": "Dossier no encontrado."}
+    if not llm.disponible():
+        return {"ok": False, "error": f"El motor LLM ({llm.backend()}) no está disponible."}
+    prompt = PROMPT_CONTRAARGUMENTO.format(
+        titulo=inv.get("titulo") or inv.get("tema") or "",
+        hipotesis="; ".join(inv.get("hipotesis") or []) or "(ninguna registrada)",
+        especulacion="; ".join(inv.get("especulacion") or []) or "(ninguna registrada)",
+    )
+    r = llm.generar_json(prompt, temperature=0.6)
+    if not r.get("ok"):
+        return {"ok": False, "error": "No se pudo generar el contraargumento: " + r.get("error", "")}
+    texto = (r["data"].get("contraargumento") or "").strip()
+    if not texto:
+        return {"ok": False, "error": "El motor no devolvió un contraargumento válido."}
+    database.set_contraargumento(inv_id, texto)
+    return {"ok": True, "contraargumento": texto}
 
 
 def investigar_auto():
