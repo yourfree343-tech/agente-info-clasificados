@@ -1,157 +1,391 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Conexiones — Archivo Clasificado</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%95%B5%EF%B8%8F%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body class="detective-page">
+{% extends "base.html" %}
+{% block title %}Conexiones — Archivo Clasificado{% endblock %}
 
-<nav>
-  <div class="nav-brand"><span class="icon">👁️</span><span>Archivo·Clasificado</span></div>
-  <div class="nav-tabs">
-    <a class="nav-tab" href="/"><span data-icon="folder"></span>Documentos</a>
-    <a class="nav-tab" href="/investigaciones"><span data-icon="search"></span>Investigaciones</a>
-    <a class="nav-tab active" href="/conexiones"><span data-icon="network"></span>Conexiones</a>
+{% block content %}
+<header class="page-head">
+  <div class="page-head-text">
+    <span class="kicker">Tablero del detective · análisis cruzado</span>
+    <h1 class="page-title">Conexiones entre casos</h1>
+    <p class="page-sub">Qué entidades se repiten entre los dossiers y en qué años se concentran los hechos que investiga.
+      Es un cálculo automático sobre el texto: una línea es una <b>coincidencia de nombres</b>, no una prueba de nada.</p>
   </div>
-  <div class="nav-right"></div>
-</nav>
+</header>
 
-<div class="container">
-
-  <header class="hero">
-    <span class="stamp">Tablero del detective</span>
-    <span class="hero-kicker">Análisis cruzado · 2026</span>
-    <h1 class="hero-title">Conexiones entre casos</h1>
-    <p class="hero-sub">Qué entidades se repiten entre los dossiers del detective, y en qué años se concentran los hechos que investiga. Cálculo automático: no interpretes las líneas como prueba de nada, solo como coincidencias de texto.</p>
-  </header>
-
-  <div class="conexiones-grid">
-    <div class="graph-card">
-      <h3><span data-icon="network"></span>Tablero de conexiones</h3>
-      <div class="graph-hint">Cada punto es un dossier; una línea significa que comparten una entidad específica (no un tema genérico). Pulsa un punto para ver el detalle.</div>
-      <div id="graph-wrap"><div class="graph-empty"><span class="spinner"></span>Calculando conexiones…</div></div>
-      <div class="graph-detail" id="graph-detail">Pulsa un caso del tablero para ver con qué otros conecta.</div>
+<div class="conexiones-grid">
+  <section class="graph-card" aria-labelledby="t-tablero">
+    <h3 id="t-tablero"><span data-icon="network"></span>Tablero de conexiones</h3>
+    <div class="graph-hint">Cada punto es un dossier (más grande = más conexiones); una línea une dos casos que comparten una entidad específica. Pasa por encima para ver sus vecinos; pulsa para fijarlo.</div>
+    <div class="graph-toolbar">
+      <select id="f-cat" aria-label="Resaltar una categoría"><option value="">Resaltar categoría…</option></select>
+      <label style="font-size:12.5px;color:var(--muted);display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="f-aislados"> Ocultar casos sin conexiones</label>
+      <button class="btn btn-ghost btn-sm" id="btn-reset" type="button" hidden><span data-icon="x"></span>Quitar resaltado</button>
     </div>
-    <div>
-      <div class="graph-card" style="margin-bottom:16px">
-        <h3><span data-icon="tag"></span>Patrones recurrentes</h3>
-        <div id="rank-list" class="rank-list"><div class="graph-empty">Cargando…</div></div>
-      </div>
-      <div class="graph-card">
-        <h3><span data-icon="clock"></span>Línea temporal</h3>
-        <div class="graph-hint" style="margin-bottom:10px">Años mencionados en los hechos de todos los dossiers.</div>
-        <div id="timeline-list" class="rank-list"><div class="graph-empty">Cargando…</div></div>
-      </div>
-    </div>
+    <div id="graph-wrap"><div class="graph-empty"><span class="spinner"></span>Calculando conexiones…</div></div>
+    <div class="graph-detail" id="graph-detail" aria-live="polite">Pulsa un caso del tablero, o un patrón de la derecha, para ver qué casos conecta.</div>
+  </section>
+  <div class="side-stack">
+    <section class="graph-card" aria-labelledby="t-patrones">
+      <h3 id="t-patrones"><span data-icon="tag"></span>Patrones recurrentes</h3>
+      <div class="graph-hint">Entidades que aparecen en más dossiers. Pulsa una para resaltar sus casos.</div>
+      <div id="rank-list"><div class="graph-empty">Cargando…</div></div>
+    </section>
+    <section class="graph-card" aria-labelledby="t-cifras">
+      <h3 id="t-cifras"><span data-icon="activity"></span>En cifras</h3>
+      <div id="cifras" class="graph-hint" style="margin:0">—</div>
+    </section>
   </div>
-
 </div>
 
-<script src="/static/js/icons.js"></script>
+<section class="timeline-card" aria-labelledby="t-linea">
+  <div class="graph-card" style="border:0;padding:0">
+    <h3 id="t-linea"><span data-icon="clock"></span>Línea temporal</h3>
+    <div class="graph-hint">Cuántos dossiers mencionan cada año en sus hechos, hipótesis y conexiones.
+      <label style="margin-left:10px;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="f-actual"> Incluir el año actual</label>
+      <span id="nota-actual"></span></div>
+  </div>
+  <div id="timeline-wrap"><div class="graph-empty">Cargando…</div></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
 <script>
-let graphData = null;
-let posById = {};
+const $ = id => document.getElementById(id);
+const SVGNS = 'http://www.w3.org/2000/svg';
+const G = { data: null, pos: {}, vecinos: {}, fijado: null, resalte: null };
 
 async function loadConexiones() {
-  try {
-    const r = await fetch('/api/conexiones');
-    graphData = await r.json();
-  } catch (e) {
-    document.getElementById('graph-wrap').innerHTML = `<div class="graph-empty">No se pudo cargar el análisis.</div>`;
+  const d = await api('/api/conexiones');
+  if (!d || d.ok === false || !Array.isArray(d.nodos)) {
+    $('graph-wrap').innerHTML = '<div class="graph-empty">No se pudo cargar el análisis.</div>';
     return;
   }
+  G.data = d;
+  G.vecinos = {};
+  d.nodos.forEach(n => { G.vecinos[n.id] = new Set(); });
+  d.aristas.forEach(a => { G.vecinos[a.a] && G.vecinos[a.a].add(a.b); G.vecinos[a.b] && G.vecinos[a.b].add(a.a); });
+  poblarCategorias();
   renderGraph();
   renderRanking();
+  renderCifras();
   renderTimeline();
+  const caso = leerParams().get('caso');
+  if (caso && G.vecinos[caso]) seleccionar(caso);
 }
+
+/* ---------------- Disposición por fuerzas (Fruchterman-Reingold, determinista) ---------------- */
+/* Los casos conectados se reparten por fuerzas en un espacio libre y luego se encajan en
+   el lienzo; los aislados van en una fila aparte abajo (si no, la repulsión los manda a
+   las esquinas y aplastan el grupo principal). */
+function disponer(nodos, aristas, W, H) {
+  const pos = {};
+  const conectados = nodos.filter(n => n.grado > 0), aislados = nodos.filter(n => !n.grado);
+  const filaAislados = aislados.length ? 44 : 0;
+  const n = conectados.length;
+  // Arranque en espiral (sin azar: el tablero sale igual en cada visita).
+  conectados.forEach((nd, i) => {
+    const a = i * 2.39996, r = 10 * Math.sqrt(i + 1);
+    pos[nd.id] = { x: r * Math.cos(a), y: r * Math.sin(a), dx: 0, dy: 0 };
+  });
+  const k = 58;
+  let temp = 60;
+  for (let it = 0; it < 420; it++) {
+    for (const v of conectados) { pos[v.id].dx = 0; pos[v.id].dy = 0; }
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const p = pos[conectados[i].id], q = pos[conectados[j].id];
+      let dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy) || 0.01;
+      const f = (k * k) / d;
+      dx /= d; dy /= d;
+      p.dx += dx * f; p.dy += dy * f; q.dx -= dx * f; q.dy -= dy * f;
+    }
+    for (const a of aristas) {
+      const p = pos[a.a], q = pos[a.b];
+      if (!p || !q) continue;
+      let dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy) || 0.01;
+      const f = (d * d) / k * (0.4 + Math.min(a.peso, 5) * 0.08);
+      dx /= d; dy /= d;
+      p.dx -= dx * f; p.dy -= dy * f; q.dx += dx * f; q.dy += dy * f;
+    }
+    for (const v of conectados) {   // gravedad: mantiene juntos los grupos pequeños
+      const p = pos[v.id];
+      p.dx -= p.x * 0.9; p.dy -= p.y * 0.9;
+      const d = Math.hypot(p.dx, p.dy) || 0.01, m = Math.min(d, temp);
+      p.x += p.dx / d * m; p.y += p.dy / d * m;
+    }
+    temp = Math.max(0.4, temp * 0.986);
+  }
+  // Encajar en el lienzo conservando proporciones.
+  if (n) {
+    const xs = conectados.map(v => pos[v.id].x), ys = conectados.map(v => pos[v.id].y);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const padX = 70, padY = 34, h = H - filaAislados;
+    const esc = Math.min((W - 2 * padX) / Math.max(x1 - x0, 1), (h - 2 * padY) / Math.max(y1 - y0, 1), 2.2);
+    const offX = (W - (x1 - x0) * esc) / 2, offY = (h - (y1 - y0) * esc) / 2;
+    conectados.forEach(v => { const p = pos[v.id]; p.x = offX + (p.x - x0) * esc; p.y = offY + (p.y - y0) * esc; });
+  }
+  const paso = Math.min(46, (W - 180) / Math.max(aislados.length, 1));
+  aislados.forEach((v, i) => { pos[v.id] = { x: 150 + i * paso, y: H - 22 }; });
+  return pos;
+}
+
+/* Etiquetas fijas para los casos más conectados, saltándose las que chocarían con otra. */
+function elegirEtiquetas(nodos, max) {
+  const cajas = [], elegidos = new Set();
+  [...nodos].filter(n => n.grado > 0).sort((a, b) => b.grado - a.grado).forEach(n => {
+    if (elegidos.size >= max) return;
+    const p = G.pos[n.id], w = Math.min(30, (n.titulo || '').length) * 5.3, y = p.y + radio(n) + 8;
+    const caja = { x0: p.x - w / 2 - 4, x1: p.x + w / 2 + 4, y0: y - 2, y1: y + 14 };
+    if (cajas.some(c => caja.x0 < c.x1 && caja.x1 > c.x0 && caja.y0 < c.y1 && caja.y1 > c.y0)) return;
+    cajas.push(caja);
+    elegidos.add(n.id);
+  });
+  return elegidos;
+}
+
+function radio(n) { return Math.min(15, 5 + 2.4 * Math.sqrt(n.grado || 0)); }
+function corto(t, max) { t = t || ''; return t.length > max ? t.slice(0, max - 1).trimEnd() + '…' : t; }
 
 function renderGraph() {
-  const wrap = document.getElementById('graph-wrap');
-  const nodos = graphData.nodos || [];
+  const wrap = $('graph-wrap');
+  const soloConectados = $('f-aislados').checked;
+  const nodos = (G.data.nodos || []).filter(n => !soloConectados || n.conectado);
   if (nodos.length < 2) {
-    wrap.innerHTML = `<div class="graph-empty">${iconSvg('box',{size:36})}<br>Hacen falta al menos dos dossiers para trazar conexiones.</div>`;
+    wrap.innerHTML = `<div class="graph-empty">${iconSvg('box', {size: 32})}<br>Hacen falta al menos dos dossiers para trazar conexiones.</div>`;
     return;
   }
-  const cx = 320, cy = 290, R = 225;
-  const n = nodos.length;
-  const colorCert = { ALTO: 'var(--alto)', MEDIO: 'var(--medio)', BAJO: 'var(--bajo)' };
-  posById = {};
-  nodos.forEach((node, i) => {
-    const angle = (i / n) * 2 * Math.PI - Math.PI / 2;
-    posById[node.id] = { x: cx + R * Math.cos(angle), y: cy + R * Math.sin(angle) };
+  const W = 760, H = 520;
+  const ids = new Set(nodos.map(n => n.id));
+  const aristas = (G.data.aristas || []).filter(a => ids.has(a.a) && ids.has(a.b));
+  G.pos = disponer(nodos, aristas, W, H);
+  // Etiqueta fija solo para los más conectados (el resto aparece al pasar por encima).
+  const etiquetados = elegirEtiquetas(nodos, 7);
+
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('class', 'graph-svg');
+  svg.setAttribute('role', 'group');
+  svg.setAttribute('aria-label', `Tablero con ${nodos.length} dossiers y ${aristas.length} conexiones`);
+  const gE = document.createElementNS(SVGNS, 'g'), gN = document.createElementNS(SVGNS, 'g');
+  aristas.forEach(a => {
+    const p = G.pos[a.a], q = G.pos[a.b];
+    const l = document.createElementNS(SVGNS, 'line');
+    l.setAttribute('x1', p.x); l.setAttribute('y1', p.y); l.setAttribute('x2', q.x); l.setAttribute('y2', q.y);
+    l.setAttribute('class', 'edge'); l.setAttribute('stroke-width', Math.min(1 + a.peso * 0.6, 3.5).toFixed(1));
+    l.dataset.a = a.a; l.dataset.b = a.b;
+    gE.appendChild(l);
   });
+  nodos.forEach(n => {
+    const p = G.pos[n.id], r = radio(n);
+    const g = document.createElementNS(SVGNS, 'g');
+    g.setAttribute('class', 'node' + (n.conectado ? '' : ' aislado') + (etiquetados.has(n.id) ? ' etiquetado' : ''));
+    g.setAttribute('tabindex', '0');
+    g.setAttribute('role', 'button');
+    g.setAttribute('aria-label', `${n.titulo}: ${n.grado} conexiones`);
+    g.dataset.id = n.id;
+    const hit = document.createElementNS(SVGNS, 'circle');   // área de pulsación ≥ 24 px
+    hit.setAttribute('cx', p.x); hit.setAttribute('cy', p.y); hit.setAttribute('r', Math.max(14, r + 6)); hit.setAttribute('class', 'hit');
+    const dot = document.createElementNS(SVGNS, 'circle');
+    dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y); dot.setAttribute('r', r); dot.setAttribute('class', 'dot');
+    const t = document.createElementNS(SVGNS, 'text');
+    t.setAttribute('x', p.x); t.setAttribute('y', p.y + r + 12); t.setAttribute('text-anchor', 'middle'); t.setAttribute('class', 'lbl');
+    t.textContent = corto(n.titulo, 30);
+    g.append(hit, dot, t);
+    gN.appendChild(g);
+  });
+  if (nodos.some(n => !n.grado)) {
+    const t = document.createElementNS(SVGNS, 'text');
+    t.setAttribute('x', 16); t.setAttribute('y', H - 18); t.setAttribute('class', 'tick-lbl');
+    t.textContent = 'Sin conexiones:';
+    svg.appendChild(t);
+    const l = document.createElementNS(SVGNS, 'line');
+    l.setAttribute('x1', 16); l.setAttribute('x2', W - 16); l.setAttribute('y1', H - 44); l.setAttribute('y2', H - 44);
+    l.setAttribute('class', 'sep');
+    svg.appendChild(l);
+  }
+  svg.append(gE, gN);
+  wrap.innerHTML = '';
+  wrap.appendChild(svg);
 
-  const edgesHtml = (graphData.aristas || []).map(a => {
-    const p1 = posById[a.a], p2 = posById[a.b];
-    if (!p1 || !p2) return '';
-    const w = Math.min(1 + a.peso * 0.7, 4).toFixed(1);
-    return `<line class="edge" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke-width="${w}"><title>${escHtml(a.terminos.join(', '))}</title></line>`;
-  }).join('');
-
-  const nodesHtml = nodos.map(node => {
-    const p = posById[node.id];
-    const label = node.titulo.length > 15 ? node.titulo.slice(0, 15) + '…' : node.titulo;
-    const color = colorCert[node.certeza] || 'var(--muted)';
-    return `<g class="node ${node.conectado ? 'on' : ''}" data-id="${escAttr2(node.id)}" onclick="selectNode('${escAttr2(node.id)}')">
-      <circle cx="${p.x}" cy="${p.y}" r="9" style="fill:${color};fill-opacity:.55"><title>${escHtml(node.titulo)}</title></circle>
-      <text x="${p.x}" y="${p.y + 20}" text-anchor="middle">${escHtml(label)}</text>
-    </g>`;
-  }).join('');
-
-  wrap.innerHTML = `<svg class="graph-svg" viewBox="0 0 640 580" xmlns="http://www.w3.org/2000/svg">
-    <g class="edges">${edgesHtml}</g>
-    <g class="nodes">${nodesHtml}</g>
-  </svg>`;
+  svg.addEventListener('pointerover', e => { const g = e.target.closest('.node'); if (g) { enfocar(new Set([g.dataset.id, ...G.vecinos[g.dataset.id]]), g.dataset.id); mostrarTip(e, g.dataset.id); } });
+  svg.addEventListener('pointermove', e => { const g = e.target.closest('.node'); if (g) mostrarTip(e, g.dataset.id); });
+  svg.addEventListener('pointerout', e => {
+    const g = e.target.closest('.node');
+    // Pasar del área de pulsación al punto (dentro del mismo caso) no cuenta como salir.
+    if (g && !(e.relatedTarget && g.contains(e.relatedTarget))) { Tip.hide(); restaurar(); }
+  });
+  svg.addEventListener('click', e => { const g = e.target.closest('.node'); if (g) seleccionar(g.dataset.id); else limpiar(); });
+  svg.addEventListener('keydown', e => { const g = e.target.closest('.node'); if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); seleccionar(g.dataset.id); } });
+  svg.addEventListener('focusin', e => { const g = e.target.closest('.node'); if (g) enfocar(new Set([g.dataset.id, ...G.vecinos[g.dataset.id]]), g.dataset.id); });
+  svg.addEventListener('focusout', () => restaurar());
+  restaurar();
 }
 
-function selectNode(id) {
-  document.querySelectorAll('#graph-wrap .node').forEach(el => el.classList.toggle('active', el.dataset.id === id));
-  const node = (graphData.nodos || []).find(n => n.id === id);
-  const detail = document.getElementById('graph-detail');
-  if (!node) return;
-  const conectadas = (graphData.aristas || []).filter(a => a.a === id || a.b === id);
+function nodo(id) { return (G.data.nodos || []).find(n => n.id === id); }
+
+function mostrarTip(e, id) {
+  const n = nodo(id);
+  if (n) Tip.show(e.clientX, e.clientY, n.titulo, `${n.categoria || 'Sin categoría'} · ${plural(n.grado, 'conexión', 'conexiones')}`);
+}
+
+/* Resalta un conjunto de casos (y las líneas entre ellos); el resto se atenúa. */
+function enfocar(conjunto, centro) {
+  const svg = document.querySelector('.graph-svg');
+  if (!svg) return;
+  svg.classList.add('focus');
+  svg.querySelectorAll('.node').forEach(g => {
+    g.classList.toggle('on', conjunto.has(g.dataset.id));
+    g.classList.toggle('active', g.dataset.id === centro);
+  });
+  svg.querySelectorAll('.edge').forEach(l => {
+    const on = centro ? (l.dataset.a === centro || l.dataset.b === centro) : (conjunto.has(l.dataset.a) && conjunto.has(l.dataset.b));
+    l.classList.toggle('on', on);
+  });
+}
+
+/* Vuelve al estado fijado (caso seleccionado o patrón/categoría resaltados), o a ninguno. */
+function restaurar() {
+  if (G.fijado) return enfocar(new Set([G.fijado, ...G.vecinos[G.fijado]]), G.fijado);
+  if (G.resalte) return enfocar(G.resalte, null);
+  const svg = document.querySelector('.graph-svg');
+  if (!svg) return;
+  svg.classList.remove('focus');
+  svg.querySelectorAll('.node').forEach(g => g.classList.remove('on', 'active'));
+  svg.querySelectorAll('.edge').forEach(l => l.classList.remove('on'));
+}
+
+function limpiar() {
+  G.fijado = null; G.resalte = null;
+  $('f-cat').value = '';
+  $('btn-reset').hidden = true;
+  document.querySelectorAll('#rank-list .bar-row').forEach(b => b.setAttribute('aria-pressed', 'false'));
+  $('graph-detail').textContent = 'Pulsa un caso del tablero, o un patrón de la derecha, para ver qué casos conecta.';
+  restaurar();
+}
+
+function seleccionar(id) {
+  const n = nodo(id);
+  if (!n) return;
+  G.fijado = id; G.resalte = null;
+  $('btn-reset').hidden = false;
+  restaurar();
+  const det = $('graph-detail');
+  const conectadas = (G.data.aristas || []).filter(a => a.a === id || a.b === id).sort((x, y) => y.peso - x.peso);
+  const enlace = `<a href="/investigaciones?id=${encodeURIComponent(id)}">Abrir dossier ${iconSvg('chevron-right', {size: 12})}</a>`;
   if (!conectadas.length) {
-    detail.innerHTML = `<strong>${escHtml(node.titulo)}</strong> — sin conexiones específicas detectadas con otros casos.`;
+    det.innerHTML = `<strong>${escHtml(n.titulo)}</strong> — sin conexiones específicas con otros casos. ${enlace}`;
     return;
   }
-  const lineas = conectadas.map(a => {
-    const otroId = a.a === id ? a.b : a.a;
-    const otro = (graphData.nodos || []).find(n => n.id === otroId);
-    return `— <strong>${escHtml(otro ? otro.titulo : otroId)}</strong> <span style="color:var(--muted)">(${escHtml(a.terminos.join(', '))})</span>`;
-  }).join('<br>');
-  detail.innerHTML = `<strong>${escHtml(node.titulo)}</strong> conecta con:<br>${lineas}`;
+  det.innerHTML = `<strong>${escHtml(n.titulo)}</strong> conecta con ${plural(conectadas.length, 'caso', 'casos')} · ${enlace}<ul>${
+    conectadas.map(a => {
+      const otro = nodo(a.a === id ? a.b : a.a);
+      return `<li><a href="/investigaciones?id=${encodeURIComponent(otro ? otro.id : '')}">${escHtml(otro ? otro.titulo : '?')}</a> <span class="terms">— ${escHtml(a.terminos.join(', '))}</span></li>`;
+    }).join('')}</ul>`;
 }
 
+function resaltarConjunto(conjunto, titulo) {
+  G.fijado = null; G.resalte = conjunto;
+  $('btn-reset').hidden = false;
+  restaurar();
+  const casos = [...conjunto].map(nodo).filter(Boolean);
+  $('graph-detail').innerHTML = `<strong>${escHtml(titulo)}</strong> · ${plural(casos.length, 'caso', 'casos')}<ul>${
+    casos.map(n => `<li><a href="/investigaciones?id=${encodeURIComponent(n.id)}">${escHtml(n.titulo)}</a></li>`).join('')}</ul>`;
+}
+
+/* ---------------- Ranking de patrones ---------------- */
 function renderRanking() {
-  const el = document.getElementById('rank-list');
-  const ranking = graphData.ranking || [];
-  if (!ranking.length) { el.innerHTML = '<div class="graph-empty">Sin patrones recurrentes todavía.</div>'; return; }
-  const max = Math.max(...ranking.map(r => r.n), 1);
-  el.innerHTML = ranking.map(r => `
-    <div class="rank-row"><div class="rank-label" title="${escHtml(r.termino)}">${escHtml(r.termino)}</div>
-    <div class="bar-track"><div class="bar-fill" style="width:${Math.round(r.n / max * 100)}%;background:var(--violet)"></div></div>
-    <div class="rank-val">${r.n}</div></div>`).join('');
+  const el = $('rank-list');
+  const ranking = G.data.ranking || [];
+  renderBarList(el, ranking.map(r => ({ label: r.termino, n: r.n })), {
+    clase: 'violet', vacio: 'Sin patrones recurrentes todavía.',
+    onClick: termino => {
+      el.querySelectorAll('.bar-row').forEach(b => b.setAttribute('aria-pressed', b.dataset.value === termino ? 'true' : 'false'));
+      const conj = new Set((G.data.nodos || []).filter(n => (n.terminos || []).includes(termino)).map(n => n.id));
+      resaltarConjunto(conj, `Casos que mencionan «${termino}»`);
+    },
+  });
+  el.querySelectorAll('.bar-row').forEach(b => { b.dataset.tipLbl = 'dossiers lo mencionan'; });
 }
 
+function poblarCategorias() {
+  const cuenta = {};
+  (G.data.nodos || []).forEach(n => { const c = n.categoria || 'Sin categoría'; cuenta[c] = (cuenta[c] || 0) + 1; });
+  const sel = $('f-cat');
+  sel.innerHTML = '<option value="">Resaltar categoría…</option>' + Object.entries(cuenta).sort((a, b) => b[1] - a[1])
+    .map(([c, n]) => `<option value="${escHtml(c)}">${escHtml(c)} (${n})</option>`).join('');
+}
+
+function renderCifras() {
+  const nodos = G.data.nodos || [], aristas = G.data.aristas || [];
+  const conectados = nodos.filter(n => n.conectado).length;
+  const top = [...nodos].sort((a, b) => b.grado - a.grado)[0];
+  $('cifras').innerHTML = `<strong style="color:var(--text)">${fmtNum(nodos.length)}</strong> dossiers · <strong style="color:var(--text)">${fmtNum(aristas.length)}</strong> conexiones<br>`
+    + `${fmtNum(conectados)} casos conectados, ${fmtNum(nodos.length - conectados)} aislados`
+    + (top && top.grado ? `<br>Más conectado: <a href="#" id="top-caso">${escHtml(corto(top.titulo, 60))}</a> (${top.grado})` : '');
+  const a = $('top-caso');
+  if (a) a.onclick = e => { e.preventDefault(); seleccionar(top.id); };
+}
+
+/* ---------------- Línea temporal (columnas finas por año, cruceta que salta al año más cercano) ---------------- */
 function renderTimeline() {
-  const el = document.getElementById('timeline-list');
-  const linea = graphData.linea_temporal || [];
-  if (!linea.length) { el.innerHTML = '<div class="graph-empty">Sin años detectados en los hechos.</div>'; return; }
-  const max = Math.max(...linea.map(t => t.n), 1);
-  el.innerHTML = linea.map(t => `
-    <div class="rank-row"><div class="rank-label">${escHtml(t.anio)}</div>
-    <div class="bar-track"><div class="bar-fill" style="width:${Math.round(t.n / max * 100)}%;background:var(--info)"></div></div>
-    <div class="rank-val">${t.n}</div></div>`).join('');
+  const wrap = $('timeline-wrap');
+  // El año en curso sale en casi todos los dossiers (el detective escribe "en 2026...") y
+  // aplastaría el resto de la escala: se omite salvo que se pida, y se dice cuánto vale.
+  const actual = G.data.anio_actual, conActual = $('f-actual').checked;
+  const enActual = (G.data.linea_temporal || []).find(t => +t.anio === actual);
+  $('nota-actual').textContent = !conActual && enActual ? ` · ${actual} omitido: aparece en ${enActual.n} dossiers` : '';
+  const datos = (G.data.linea_temporal || []).map(t => ({ anio: +t.anio, n: t.n }))
+    .filter(t => t.anio && (conActual || t.anio !== actual));
+  if (!datos.length) { wrap.innerHTML = '<div class="graph-empty">Sin años detectados en los hechos.</div>'; return; }
+  const W = 1000, H = 190, ml = 34, mr = 16, mt = 22, mb = 26;
+  const min = Math.floor(datos[0].anio / 10) * 10, max = Math.ceil((datos[datos.length - 1].anio + 1) / 10) * 10;
+  const span = Math.max(10, max - min), pw = W - ml - mr, ph = H - mt - mb;
+  const x = a => ml + (a - min + 0.5) / span * pw;
+  const vmax = Math.max(...datos.map(d => d.n), 1);
+  const bw = Math.max(2, Math.min(14, pw / span - 2));
+  const y = v => mt + ph - v / vmax * ph;
+  const pico = datos.reduce((a, b) => (b.n > a.n ? b : a));
+  let s = `<svg class="timeline-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Dossiers que mencionan cada año, de ${min} a ${max}; pico en ${pico.anio} con ${pico.n}">`;
+  for (let d = min; d <= max; d += 10) {
+    const xx = ml + (d - min) / span * pw;
+    s += `<line class="grid" x1="${xx}" y1="${mt}" x2="${xx}" y2="${mt + ph}"/><text class="tick" x="${xx}" y="${H - 8}" text-anchor="middle">${d}</text>`;
+  }
+  s += `<line class="base" x1="${ml}" y1="${mt + ph}" x2="${W - mr}" y2="${mt + ph}"/>`;
+  s += `<text class="tick" x="${ml - 6}" y="${y(vmax) + 4}" text-anchor="end">${vmax}</text>`;
+  datos.forEach(d => {
+    const h = Math.max(2, mt + ph - y(d.n));
+    s += `<path class="col" data-anio="${d.anio}" d="M${x(d.anio) - bw / 2},${mt + ph} v${-(h - Math.min(4, bw / 2))} q0,${-Math.min(4, bw / 2)} ${Math.min(4, bw / 2)},${-Math.min(4, bw / 2)} h${bw - 2 * Math.min(4, bw / 2)} q${Math.min(4, bw / 2)},0 ${Math.min(4, bw / 2)},${Math.min(4, bw / 2)} v${h - Math.min(4, bw / 2)} Z"/>`;
+  });
+  s += `<text class="cap" x="${x(pico.anio)}" y="${y(pico.n) - 6}" text-anchor="middle">${pico.anio} · ${pico.n}</text>`;
+  s += `<line class="cross" id="tl-cross" x1="0" x2="0" y1="${mt}" y2="${mt + ph}" visibility="hidden"/>`;
+  s += `<rect id="tl-hit" x="${ml}" y="${mt}" width="${pw}" height="${ph}" fill="transparent"/></svg>`;
+  s += `<details class="tabla-datos"><summary>${iconSvg('bar-chart', {size: 13})}Ver como tabla</summary><table><thead><tr><th>Año</th><th>Dossiers</th></tr></thead><tbody>${
+    datos.map(d => `<tr><td>${d.anio}</td><td>${d.n}</td></tr>`).join('')}</tbody></table></details>`;
+  wrap.innerHTML = s;
+
+  const svg = wrap.querySelector('svg'), hit = $('tl-hit'), cross = $('tl-cross');
+  const cols = svg.querySelectorAll('.col');
+  hit.addEventListener('pointermove', e => {
+    const r = svg.getBoundingClientRect();
+    const xs = (e.clientX - r.left) / r.width * W;
+    const anio = min + (xs - ml) / pw * span - 0.5;
+    const d = datos.reduce((a, b) => (Math.abs(b.anio - anio) < Math.abs(a.anio - anio) ? b : a));
+    cross.setAttribute('x1', x(d.anio)); cross.setAttribute('x2', x(d.anio)); cross.setAttribute('visibility', 'visible');
+    cols.forEach(c => c.classList.toggle('hl', +c.dataset.anio === d.anio));
+    Tip.show(e.clientX, e.clientY, plural(d.n, 'dossier', 'dossiers'), `año ${d.anio}`);
+  });
+  hit.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); cols.forEach(c => c.classList.remove('hl')); Tip.hide(); });
 }
 
-function escHtml(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function escAttr2(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+/* ---------------- Controles ---------------- */
+$('f-cat').addEventListener('change', e => {
+  const cat = e.target.value;
+  if (!cat) return limpiar();
+  const conj = new Set((G.data.nodos || []).filter(n => (n.categoria || 'Sin categoría') === cat).map(n => n.id));
+  resaltarConjunto(conj, `Categoría «${cat}»`);
+});
+$('f-aislados').addEventListener('change', () => { renderGraph(); });
+$('f-actual').addEventListener('change', renderTimeline);
+$('btn-reset').addEventListener('click', limpiar);
 
-mountIcons();
 loadConexiones();
 </script>
-</body>
-</html>
+{% endblock %}

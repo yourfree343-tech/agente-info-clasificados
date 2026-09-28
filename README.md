@@ -1,12 +1,14 @@
 # Agente Info Clasificados
 
 Panel web para consultar **documentos desclasificados** publicados por gobiernos y
-organismos oficiales (NARA, FBI Vault, archive.org), con resumen, puntos clave,
-implicaciones, metadatos y nivel de confianza por expediente.
+organismos oficiales (NARA, FBI Vault, NASA, archive.org y peticiones FOIA de The
+Black Vault), con resumen, puntos clave, implicaciones, metadatos y nivel de
+confianza por expediente.
 
-Incluye además un **detective conspiranoico autónomo** que investiga en internet
-por su cuenta (UFOs, MK-Ultra, Stargate, portadas de The Economist, etc.), separa
-hechos de especulación y guarda los dossiers en una sección aparte con imágenes.
+Incluye además un **detective conspiranoico autónomo** que investiga por su cuenta
+(OVNIs, MK-Ultra, Stargate, portadas de The Economist, etc.) partiendo de Wikipedia y
+de los propios documentos oficiales del archivo, separa hechos de especulación y
+guarda los dossiers en una sección aparte con imágenes y la calidad de sus fuentes.
 
 > ⚠ Aviso: la sección "Investigaciones" es **especulativa por diseño** — las
 > teorías se etiquetan claramente como tales y se separan de los documentos
@@ -14,14 +16,20 @@ hechos de especulación y guarda los dossiers en una sección aparte con imágen
 
 ## Capturas
 
-**Documentos desclasificados** — buscador, filtros, paginación y estadísticas:
+**Documentos desclasificados** — estadísticas, distribución por categoría, fuente y
+década (pulsa una barra para filtrar), buscador sin tildes y filtros compartibles por URL:
 
 ![Panel de documentos](docs/screenshots/documentos.png)
 
-**Dossiers del Detective** — investigación autónoma con imágenes, hechos verificados,
-especulación marcada como tal y veredicto del analista:
+**Dossiers del Detective** — investigación autónoma plegable, con imágenes, calidad
+de las fuentes, hechos verificados, especulación marcada como tal y veredicto:
 
 ![Dossiers del Detective](docs/screenshots/investigaciones.png)
+
+**Conexiones** — tablero de casos que comparten entidades, patrones recurrentes y
+línea temporal de los años que se mencionan:
+
+![Tablero de conexiones](docs/screenshots/conexiones.png)
 
 ## Cómo arrancarlo
 
@@ -36,8 +44,9 @@ chmod +x iniciar.sh
 ./iniciar.sh
 ```
 
-En los tres sistemas se instalarán las dependencias automáticamente y se abrirá
-el navegador en **http://localhost:5790**. Para detenerlo, `Ctrl + C` en la consola.
+En los tres sistemas se instalarán las dependencias automáticamente, se creará
+`config.py` a partir de la plantilla si aún no existe y se abrirá el navegador en
+**http://localhost:5790**. Para detenerlo, `Ctrl + C` en la consola.
 
 ### Arranque manual (cualquier sistema)
 
@@ -52,15 +61,28 @@ python app.py        # o python3 app.py en Mac/Linux
 
 ## Qué hace
 
-- **Dos páginas** separadas con navegación arriba:
+- **Tres páginas** con navegación arriba y **tema claro u oscuro** (se recuerda):
   - 📂 **Documentos** — expedientes oficiales desclasificados, paginados.
-  - 🕵️ **Investigaciones** — dossiers del detective con imágenes.
-- **Buscador y filtros** (categoría, país, confianza, verificación, fechas).
-- **Tarjetas expandibles** con resumen, puntos clave, implicaciones y trazabilidad.
-- **Estadísticas y gráficas** por categoría y país.
-- **Actualización diaria automática** a las 06:00 (configurable).
-- **Detective autónomo** que investiga solo cada hora con el motor LLM.
-- **Resúmenes con IA** y **generación de informes PDF** por documento.
+  - 🕵️ **Investigaciones** — dossiers del detective, plegables.
+  - 🕸️ **Conexiones** — qué casos comparten entidades y en qué años se concentran.
+- **Buscador** que no distingue tildes ni mayúsculas y exige todas las palabras
+  («area 51 roswell»), sobre título, título original, resumen, puntos clave y organismo.
+  Tecla `/` para ir a él.
+- **Filtros** por fuente, categoría, país, confianza, estado del resumen y fechas
+  (también fechas de solo año, como «1947»), con orden elegible. Las opciones salen
+  del propio archivo y el estado queda en la URL, así un filtro se puede compartir.
+- **Tarjetas expandibles** con resumen, puntos clave, implicaciones, trazabilidad y
+  botón para **abrir el documento original**.
+- **Estadísticas y gráficas** por categoría, fuente y década; pulsar una barra filtra.
+- **Actualización diaria automática** a las 06:00 (configurable), con progreso visible.
+- **Resúmenes con IA en segundo plano**: el archivo se resume solo, de poco en poco.
+  Antes de gastar una llamada aprovecha el análisis del informe PDF si ya existe, y
+  marca como **«sin texto legible»** los escaneados que no se pueden leer, en vez de
+  inventar un resumen a partir del título.
+- **Informes PDF** por documento y por dossier, con la tipografía de la web,
+  cabecera, pie y número de página.
+- **Detective autónomo** que investiga solo cada hora, muestra en qué fase va y
+  descarta cualquier URL que el modelo cite sin haberla visto.
 - **Exportar JSON** con todos los documentos.
 
 ## Motor LLM (cerebro de la IA)
@@ -81,6 +103,19 @@ Edita `LLM_BACKEND` en `config.py`:
 No depende de tu CPU: corre en la infraestructura de OpenRouter, así que va mucho
 más rápido y fiable que un modelo local. Requiere internet; algunos modelos son
 gratuitos, otros tienen coste por token (revísalo en openrouter.ai/models).
+
+La llamada pide JSON estricto (`OPENROUTER_JSON_MODE`), limita el razonamiento de los
+modelos que «piensan» para que no se coman el espacio del JSON (`OPENROUTER_REASONING`)
+y reintenta sola ante saturación o límite de ritmo (429/5xx).
+
+**PDF escaneados (opcional):** muchos documentos antiguos son imágenes sin capa de
+texto. Los de archive.org se leen gratis con su OCR. Para el resto puedes activar un
+modelo con visión que lea las primeras páginas como imágenes:
+```
+OPENROUTER_VISION_MODEL = "google/gemini-2.5-flash-lite"   # ~0,1 céntimos por documento
+```
+Viene desactivado porque tiene coste. Con él activo aparece el botón
+«Leer N escaneados con visión».
 
 ### Opción 2 — LM Studio local (sin límites, pero lento en CPU)
 
@@ -116,10 +151,16 @@ Sin límites de uso, 100% privado y gratis. Va bastante más lento sin GPU
 
 | Insignia | Significado |
 |----------|-------------|
-| ✓ **Oficial** | Confirmado como desclasificado por la fuente oficial. |
-| ⚠ **Posible** | Detectado automáticamente; requiere verificación manual. |
-| 🤖 **IA** | El resumen lo generó el motor LLM (no curado). |
-| 🆕 **NUEVO** | Ingresado hoy. |
+| **IA** | El resumen lo generó el motor LLM a partir del contenido del documento. |
+| **Curado** | Resumen redactado a mano (documentos semilla). |
+| **Pendiente** | Aún sin resumen; el archivo lo resumirá solo en segundo plano. |
+| **Sin texto** | Escaneado sin capa de texto o fuente que no deja descargar: ábrelo en el original. |
+| **Nuevo** | Ingresado hoy. |
+| **Confianza alta / media / baja** | Fiabilidad de la fuente y de la información. |
+
+En los dossiers, cada fuente citada se clasifica como **oficial** (.gov, .mil, .gob…),
+**archivo documental**, **referencia** (Wikipedia, revistas científicas), **prensa**,
+**web** o **redes/vídeo**, para ver de un vistazo en qué se apoya cada caso.
 
 ## Estructura del proyecto
 
@@ -127,36 +168,53 @@ Sin límites de uso, 100% privado y gratis. Va bastante más lento sin GPU
 app.py              Servidor Flask + planificador
 config.example.py   Plantilla de configuración (se sube; sin secretos)
 config.py           Tu configuración real (no se sube; claves, motor LLM, horarios)
-database.py         SQLite (documentos + investigaciones, tablas separadas, paginación)
-updater.py          Ingestor de fuentes (NARA, FBI Vault, archive.org) + actualización en segundo plano
-gemini.py           Backend LLM Gemini (opcional)
-llm.py              Capa intercambiable (Gemini / LM Studio / OpenRouter)
-detective.py        Detective conspiranoico autónomo + búsqueda web
-informe.py          Generación de informes PDF
+database.py         SQLite (documentos + investigaciones, búsqueda sin tildes, filtros, WAL)
+updater.py          Ingestor de fuentes con rotación y fechas reales + actualización en segundo plano
+analizador.py       Resúmenes con IA en segundo plano (reaprovecha los informes, detecta ilegibles)
+tareas.py           Tareas de fondo con cerrojo y estado (actualización, análisis, detective)
+gemini.py           Backend Gemini + descarga de contenido (PDF, OCR de archive.org)
+llm.py              Capa intercambiable (Gemini / LM Studio / OpenRouter, visión opcional)
+detective.py        Detective autónomo: Wikipedia + noticias + web + archivo oficial
+analisis.py         Conexiones entre dossiers y clasificación de fuentes
+informe.py          Informes PDF (documentos y dossiers)
 templates/
-  index.html        Página de documentos (paginada en servidor)
-  investigaciones.html  Página de dossiers del detective (paginada en servidor)
-static/css/
-  style.css         Tema visual
+  base.html         Esqueleto común: navegación, tema, tipografía
+  index.html        Documentos
+  investigaciones.html  Dossiers del detective
+  conexiones.html   Tablero de conexiones y línea temporal
+static/css/         style.css (tema claro/oscuro con tokens) y fonts.css
+static/fonts/       IBM Plex Sans/Mono en local (licencia OFL); ttf/ para los PDF
 static/js/
-  icons.js          Sistema de iconos SVG en línea compartido por las dos páginas
-tests/               Tests unitarios y de integración (pytest)
+  icons.js          Iconos SVG en línea
+  common.js         Utilidades compartidas: API, avisos, gráficas, paginación, tema
+tests/              Tests unitarios y de integración (pytest)
 data/               (generado, no se sube) base de datos e informes
-requirements.txt    Dependencias
+requirements.txt    Dependencias (requirements-dev.txt: pytest)
 iniciar.bat         Arranque rápido en Windows
 ```
 
+Tests: `pip install -r requirements-dev.txt` y `python -m pytest -q`.
+
 ## Fuentes de documentos (todas con PDF descargable)
 
-- **NARA NDC** — listas de publicación trimestrales del National Declassification Center.
-- **JFK 2025** — registros del asesinato de JFK publicados por NARA en 2025.
+- **NARA** — registros de los asesinatos de **JFK** (publicaciones de 2023 y 2025),
+  **RFK** y **MLK** (2025), los **Papeles del Pentágono** y las listas trimestrales del
+  National Declassification Center.
+- **NASA** — informe final del estudio independiente sobre UAP (2023).
 - **FBI Vault** — archivos desclasificados recientes del FBI.
+- **The Black Vault** — documentos entregados vía FOIA por CIA, NSA, Navy, AARO y
+  otras agencias (archivo privado de referencia: entran con fiabilidad «media»).
 - **archive.org** — MKUltra, Project Blue Book, Stargate, Operation Northwoods,
-  Operation Paperclip y otros documentos históricos.
+  Operation Paperclip, Comité Church, COINTELPRO y otros documentos históricos.
+
+Cada fuente aporta **como máximo N documentos nuevos por actualización**. En las
+colecciones grandes (miles de PDF en RFK o MLK) eso hace que el archivo crezca cada
+día con material distinto. Las fechas son las de publicación o las históricas del
+material, no la del día en que se descargó.
 
 Cualquier fuente puede activarse o desactivarse editando las listas en `config.py`.
 El ingestor descarta automáticamente cualquier elemento que no se pueda descargar
-o que supere el tamaño máximo configurable.
+o que supere el tamaño máximo configurable, y no vuelve a comprobar lo que ya tiene.
 
 ## Aviso legal y ético
 
