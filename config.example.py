@@ -56,10 +56,23 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_MODEL = "openai/gpt-oss-120b"   # revisa el slug/precio exacto en openrouter.ai/models
 OPENROUTER_TIMEOUT = 180   # es un modelo en la nube: no depende de tu CPU, no hace falta más margen
 OPENROUTER_MAX_TOKENS = 2500   # tope de salida por llamada (evita dossiers JSON truncados)
+OPENROUTER_JSON_MODE = True    # pide JSON estricto (response_format) a los modelos que lo soportan
+OPENROUTER_REASONING = "low"   # esfuerzo de razonamiento en modelos que "piensan" (gpt-oss):
+                               # "low" deja sitio al JSON y responde antes. "" = no enviarlo.
 
-# Analizar automáticamente los documentos nuevos al hacer la búsqueda diaria
-# (solo funciona si hay una clave configurada arriba).
+# Lectura de PDFs ESCANEADOS (sin capa de texto) con un modelo con visión. Desactivado por
+# defecto porque cuesta dinero (poco): cada documento envía sus primeras páginas como
+# imágenes. Con "google/gemini-2.5-flash-lite" (~0,10 $ por millón de tokens) leer 4
+# páginas cuesta del orden de una décima de céntimo por documento. "" = desactivado.
+# (Los escaneados de archive.org no lo necesitan: se lee gratis su OCR.)
+OPENROUTER_VISION_MODEL = ""   # p. ej. "google/gemini-2.5-flash-lite"
+OPENROUTER_VISION_PAGINAS = 4  # páginas que se envían por documento escaneado
+
+# Resumir automáticamente con IA los documentos pendientes, en segundo plano y de poco
+# en poco (solo funciona si el motor de arriba está disponible). Antes de gastar una
+# llamada, se aprovecha el análisis del informe PDF si ya existe (coste cero).
 AUTO_ANALYZE_NEW = True
+ANALISIS_INTERVAL_MIN = 15   # cada cuántos minutos se resume el siguiente lote
 # Cuántos documentos analizar como máximo en cada lote (respeta el límite gratuito).
 ANALYZE_BATCH = 5
 
@@ -78,6 +91,8 @@ DETECTIVE_INTERVAL_MIN = 60      # cada cuánto investiga solo (en CPU el 9B tar
 DETECTIVE_MAX_BUSQUEDAS = 5
 DETECTIVE_RESULTADOS_POR_BUSQUEDA = 5
 DETECTIVE_IMAGENES = 4           # imágenes a recopilar por dossier (portadas, fotos, etc.)
+DETECTIVE_WIKIPEDIA = True       # base factual: introducción de Wikipedia (es, o en si no hay)
+DETECTIVE_NOTICIAS = 4           # noticias recientes sobre el tema (0 = no buscar noticias)
 
 # Banco de temas "semilla" que el detective usa como inspiración (rota y no repite).
 # Puedes añadir, quitar o editar los que quieras.
@@ -118,7 +133,6 @@ TIMEZONE = "Europe/Madrid"
 
 # --- Red ---
 HTTP_TIMEOUT = 20        # segundos de espera por petición
-USER_AGENT = "AgentInfoClasificados/3.0 (investigacion-publica)"
 
 # Tamaño máximo de un documento para ingerirlo (los enormes no se pueden analizar).
 MAX_DOC_BYTES = 35 * 1024 * 1024
@@ -134,13 +148,42 @@ TRIM_PDF_PAGINAS = 25    # páginas a conservar al recortar un PDF grande
 # ===========================================================================
 
 # Páginas oficiales que listan PDFs de documentos desclasificados.
-#   (nombre, url, [categorías], país, fiabilidad, max_pdfs)
+#   (nombre, url, [categorías], país, fiabilidad, max_nuevos[, {extra}])
 # fiabilidad: "Alta" (organismo oficial) | "Media" (repositorio/medio verificado)
+# max_nuevos: documentos NUEVOS que se incorporan por actualización. Las colecciones
+#   grandes (miles de PDFs) van entrando por tandas, así cada día llega material distinto.
+# extra (opcional): {"fecha": "AAAA-MM-DD"} si la página no la codifica en sus enlaces,
+#   {"filtro": "regex"} para quedarse solo con los PDF cuyo enlace/texto case.
 PDF_PAGES = [
     ("Registros del Asesinato de JFK (NARA, 2025)",
      "https://www.archives.gov/research/jfk/release-2025",
      ["Inteligencia y espionaje", "Seguridad y defensa"],
-     "EE. UU.", "Alta", 15),
+     "EE. UU.", "Alta", 5),
+
+    ("Registros del Asesinato de JFK (NARA, 2023)",
+     "https://www.archives.gov/research/jfk/release-2023",
+     ["Inteligencia y espionaje", "Seguridad y defensa"],
+     "EE. UU.", "Alta", 3),
+
+    ("Registros del Asesinato de RFK (NARA, 2025)",
+     "https://www.archives.gov/research/rfk",
+     ["Inteligencia y espionaje", "Seguridad y defensa"],
+     "EE. UU.", "Alta", 4),
+
+    ("Registros del Asesinato de MLK (NARA, 2025)",
+     "https://www.archives.gov/research/mlk",
+     ["Inteligencia y espionaje", "Derechos humanos"],
+     "EE. UU.", "Alta", 4),
+
+    ("Papeles del Pentágono (NARA)",
+     "https://www.archives.gov/research/pentagon-papers",
+     ["Seguridad y defensa", "Política exterior y diplomacia"],
+     "EE. UU.", "Alta", 4, {"fecha": "2011-06-13"}),
+
+    ("Estudio independiente UAP (NASA, 2023)",
+     "https://science.nasa.gov/uap/",
+     ["Ciencia y tecnología militar", "Otras"],
+     "EE. UU.", "Alta", 1, {"filtro": "final-report", "fecha": "2023-09-14"}),
 ]
 
 # NARA NDC — listas de publicación trimestrales (PDF/Excel).
@@ -152,59 +195,65 @@ FBI_VAULT_ENABLED = True
 FBI_VAULT_RSS = "https://vault.fbi.gov/recently-added/RSS"
 FBI_VAULT_MAX = 20
 
+# The Black Vault — documentos obtenidos vía FOIA (CIA, NSA, Navy, AARO...). Es un archivo
+# privado de referencia: los PDF son respuestas oficiales de las agencias, pero alojados
+# por un tercero, así que entran con fiabilidad "Media".
+BLACK_VAULT_ENABLED = True
+BLACK_VAULT_RSS = "https://www.theblackvault.com/documentarchive/feed/"
+BLACK_VAULT_MAX = 8                 # documentos nuevos por actualización
+BLACK_VAULT_PDFS_POR_ENTRADA = 2    # una entrada puede enlazar cientos de PDF: solo los primeros
+
 # archive.org — colecciones de documentos desclasificados (UFOs, MK-Ultra y otros
 # clásicos "conspiranoicos"). Identificadores verificados con PDFs descargables.
-#   (nombre, identificador_archive_org, [categorías], país, fiabilidad, max_pdfs)
+#   (nombre, identificador_archive_org, [categorías], país, fiabilidad, max_nuevos[, {extra}])
+# extra: {"fecha": "..."} con la fecha histórica del material (archive.org no la da fiable).
+# Los PDF escaneados de archive.org se leen con su OCR gratuito (_djvu.txt).
 ARCHIVE_ORG_ITEMS = [
     ("Proyecto MKUltra (CIA)",
      "ProjectMkultraTheCiasProgramOfResearchInBehavioralModification",
-     ["Inteligencia y espionaje", "Derechos humanos"], "EE. UU.", "Media", 5),
+     ["Inteligencia y espionaje", "Derechos humanos"], "EE. UU.", "Media", 5,
+     {"fecha": "1977-08-03"}),   # audiencia conjunta del Senado
 
     ("Proyecto Libro Azul — Casos OVNI (años 40)",
      "ProjectBlueBook_1940s_case_files",
-     ["Ciencia y tecnología militar", "Otras"], "EE. UU.", "Media", 12),
+     ["Ciencia y tecnología militar", "Otras"], "EE. UU.", "Media", 4,
+     {"fecha": "1947"}),
 
     ("Proyecto Libro Azul (FBI) — OVNIs",
      "ProjectBlueBookFBI",
-     ["Inteligencia y espionaje", "Otras"], "EE. UU.", "Media", 3),
+     ["Inteligencia y espionaje", "Otras"], "EE. UU.", "Media", 3,
+     {"fecha": "1947"}),
 
     ("Programa Stargate — Visión remota (CIA)",
      "CIA-RDP96-00788R001700210016-5",
-     ["Inteligencia y espionaje", "Ciencia y tecnología militar"], "EE. UU.", "Media", 3),
+     ["Inteligencia y espionaje", "Ciencia y tecnología militar"], "EE. UU.", "Media", 3,
+     {"fecha": "1983"}),         # análisis del "Gateway Process"
 
     ("Operación Northwoods",
      "OperationNorthwoods_201612",
-     ["Seguridad y defensa", "Política exterior y diplomacia"], "EE. UU.", "Media", 2),
+     ["Seguridad y defensa", "Política exterior y diplomacia"], "EE. UU.", "Media", 2,
+     {"fecha": "1962-03-13"}),
 
     ("Operación Paperclip",
      "operation-paperclip",
-     ["Seguridad y defensa", "Ciencia y tecnología militar"], "EE. UU.", "Media", 1),
+     ["Seguridad y defensa", "Ciencia y tecnología militar"], "EE. UU.", "Media", 1,
+     {"fecha": "1945"}),
 
     ("Colección OVNI completa de la CIA",
      "CIAUFO",
-     ["Inteligencia y espionaje", "Ciencia y tecnología militar", "Otras"], "EE. UU.", "Media", 15),
+     ["Inteligencia y espionaje", "Ciencia y tecnología militar", "Otras"], "EE. UU.", "Media", 5),
 
     ("Comité Church — Abusos de CIA/FBI/NSA",
      "ChurchCommittee",
-     ["Inteligencia y espionaje", "Corrupción y gobernanza", "Derechos humanos"], "EE. UU.", "Media", 14),
+     ["Inteligencia y espionaje", "Corrupción y gobernanza", "Derechos humanos"], "EE. UU.", "Media", 4,
+     {"fecha": "1976"}),         # informes finales del Comité
 
     ("COINTELPRO — FBI contra Martin Luther King",
      "FBI-Neutralize-King",
-     ["Inteligencia y espionaje", "Derechos humanos", "Corrupción y gobernanza"], "EE. UU.", "Media", 9),
+     ["Inteligencia y espionaje", "Derechos humanos", "Corrupción y gobernanza"], "EE. UU.", "Media", 3),
 
     ("Informe Roswell (USAF) — Caso Cerrado",
      "roswellreportcas0000mcan",
-     ["Ciencia y tecnología militar", "Otras"], "EE. UU.", "Media", 2),
-]
-
-# --- Filtros de calidad para el ingestor ---
-MIN_TITULO_LEN = 15      # descarta títulos demasiado cortos (enlaces de menú)
-MAX_RESUMEN_LEN = 800    # trunca resúmenes largos
-# Palabras que delatan enlaces de navegación (no documentos):
-BLOCKLIST_TITULOS = [
-    "home", "inicio", "contact", "contacto", "about", "sobre nosotros",
-    "privacy", "privacidad", "sitemap", "mapa del sitio", "login",
-    "search", "buscar", "menu", "menú", "subscribe", "suscr",
-    "facebook", "twitter", "instagram", "youtube", "linkedin",
-    "siguiente", "anterior", "next", "previous", "cookies",
+     ["Ciencia y tecnología militar", "Otras"], "EE. UU.", "Media", 2,
+     {"fecha": "1997"}),
 ]

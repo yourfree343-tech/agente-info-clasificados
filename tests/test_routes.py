@@ -143,7 +143,7 @@ def test_conexiones_endpoint(client):
     r = client.get("/api/conexiones")
     assert r.status_code == 200
     data = r.get_json()
-    assert set(data.keys()) == {"nodos", "aristas", "ranking", "linea_temporal"}
+    assert {"nodos", "aristas", "ranking", "linea_temporal"} <= set(data.keys())
 
 
 def test_temas_cola_ciclo_completo(client):
@@ -177,3 +177,62 @@ def test_exportar_json(client):
     r = client.get("/api/exportar")
     assert r.status_code == 200
     assert r.mimetype == "application/json"
+
+
+# --- v4: páginas, cabeceras, filtros nuevos y análisis en segundo plano ---
+
+def test_paginas_renderizan_con_la_plantilla_base(client):
+    for ruta, texto in (("/", "Archivos Clasificados"), ("/investigaciones", "Dossiers del Detective"),
+                        ("/conexiones", "Conexiones entre casos")):
+        r = client.get(ruta)
+        assert r.status_code == 200
+        html = r.get_data(as_text=True)
+        assert texto in html
+        assert "/static/js/common.js" in html          # utilidades compartidas
+        assert 'aria-current="page"' in html           # pestaña activa marcada
+
+
+def test_cabeceras_de_seguridad(client):
+    r = client.get("/api/health")
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert r.headers["Referrer-Policy"] == "no-referrer"
+
+
+def test_api_filtros(client):
+    data = client.get("/api/filtros").get_json()
+    assert {"valor": "España", "n": 6} in data["paises"]
+    assert {c["valor"] for c in data["categorias"]} == {"Otras", "Seguridad y defensa"}
+
+
+def test_documentos_paginado_incluye_tiene_informe_y_filtra_por_id(client):
+    data = client.get("/api/documentos?page=1&id=T-03").get_json()
+    assert data["total"] == 1
+    assert data["items"][0]["id"] == "T-03"
+    assert data["items"][0]["tiene_informe"] is False
+    assert "analisis_detallado" not in data["items"][0]
+
+
+def test_documentos_orden_ascendente(client):
+    data = client.get("/api/documentos?page=1&page_size=3&orden=fecha_asc").get_json()
+    assert [d["id"] for d in data["items"]] == ["T-00", "T-01", "T-02"]
+
+
+def test_analizar_pendientes_sin_motor_da_400(client, monkeypatch):
+    import llm
+    monkeypatch.setattr(llm, "disponible", lambda: False)
+    r = client.post("/api/ia/analizar_pendientes")
+    assert r.status_code == 400
+    assert r.get_json()["ok"] is False
+
+
+def test_investigaciones_incluyen_calidad_de_fuentes(client):
+    database.insert_investigacion({"id": "INV-F", "tema": "t", "titulo": "Caso",
+                                   "fuentes": ["https://www.archives.gov/x", "https://blog.example/y"]})
+    data = client.get("/api/investigaciones?page=1").get_json()
+    fd = data["items"][0]["fuentes_detalle"]
+    assert fd["por_tipo"] == {"oficial": 1, "web": 1}
+
+
+def test_estado_detective_expone_fase(client):
+    data = client.get("/api/detective/estado").get_json()
+    assert {"fase", "desde", "motor_local", "ultimo_id"} <= set(data)

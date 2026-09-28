@@ -152,8 +152,7 @@ def analizar_detallado(doc, tipo=None, dato=None, url=None):
         contenido = dato
     else:
         contenido = "(No se pudo acceder al contenido. Usa solo estos metadatos y dilo claramente.)\n" + \
-                    (doc.get("resumen_ejecutivo", "") or "") + " " + \
-                    " ".join(doc.get("puntos_clave", []) or [])
+                    descripcion_fuente(doc)
 
     prompt = PROMPT_DETALLADO.format(
         titulo=doc.get("titulo", ""),
@@ -240,14 +239,71 @@ def _ratio_imprimible(s):
 def obtener_contenido(doc):
     """Descarga el documento probando url_fuente y luego url_noticia.
        Devuelve (tipo, dato, url_leida): tipo en {'pdf','text','none'}.
+       Si nada se puede descargar pero es un PDF de archive.org, usa su OCR gratuito.
     """
-    for url in (doc.get("url_fuente"), doc.get("url_noticia")):
-        if not url:
-            continue
+    # dict.fromkeys: si url_noticia es la misma que url_fuente, no se descarga dos veces.
+    for url in dict.fromkeys(u for u in (doc.get("url_fuente"), doc.get("url_noticia")) if u):
         tipo, dato = _descargar(url)
         if tipo != "none":
             return (tipo, dato, url)
+    ocr = texto_ocr_archive_org(doc.get("url_fuente"))
+    if ocr:
+        return ("text", ocr, doc.get("url_fuente", ""))
     return ("none", None, doc.get("url_fuente", ""))
+
+
+_ARCHIVE_RE = re.compile(r"^https?://(?:www\.)?archive\.org/download/([^/]+)/(.+?)\.pdf$", re.IGNORECASE)
+
+
+def texto_ocr_archive_org(url, max_chars=14000):
+    """archive.org genera gratis el OCR de cada PDF escaneado como '<archivo>_djvu.txt'.
+       Para un PDF sin capa de texto (o que no se pudo descargar) es la forma más barata
+       de leerlo: sin visión y sin descargar el PDF entero. Devuelve '' si no existe."""
+    m = _ARCHIVE_RE.match(url or "")
+    if not m:
+        return ""
+    txt_url = f"https://archive.org/download/{m.group(1)}/{m.group(2)}_djvu.txt"
+    try:
+        r = requests.get(txt_url, headers=BROWSER_HEADERS, timeout=config.HTTP_TIMEOUT)
+        if r.status_code != 200:
+            return ""
+        r.encoding = r.encoding or "utf-8"
+        texto = re.sub(r"[ \t]+", " ", r.text)
+        texto = re.sub(r"\n\s*\n+", "\n", texto).strip()
+    except Exception as e:
+        log.info(f"  OCR de archive.org no disponible para {url}: {e}")
+        return ""
+    # Un OCR que es casi todo símbolos sueltos no sirve de nada al modelo.
+    if len(texto) < 200 or _ratio_imprimible(texto[:2000]) < 0.85:
+        return ""
+    return texto[:max_chars]
+
+
+def paginas_como_imagenes(pdf_bytes, n=4, dpi=110):
+    """Renderiza las primeras n páginas de un PDF como JPEG (para modelos con visión)."""
+    if not HAS_FITZ or not pdf_bytes:
+        return []
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception:
+        return []
+    imgs = []
+    try:
+        for i in range(min(n, doc.page_count)):
+            pix = doc[i].get_pixmap(dpi=dpi)
+            imgs.append(pix.tobytes(output="jpg", jpg_quality=72))
+    except Exception as e:
+        log.info(f"  No se pudieron renderizar las páginas del PDF: {e}")
+    finally:
+        doc.close()
+    return imgs
+
+
+def descripcion_fuente(doc):
+    """El resumen que trae la propia fuente (p. ej. la descripción de The Black Vault), o ''
+       si lo que hay es solo el texto de relleno de 'pendiente de análisis'."""
+    r = (doc.get("resumen_ejecutivo") or "").strip()
+    return "" if (not r or r.startswith("[Pendiente")) else r
 
 
 def _parts_desde_contenido(tipo, dato, prompt):
@@ -315,13 +371,13 @@ def _recortar_pdf(pdf_bytes):
     return None
 
 
-def _llamar_gemini(parts):
+def _llamar_gemini(parts, temperature=0.3):
     """parts: lista de partes (texto y/o inline_data) para la API de Gemini."""
     url = API_URL.format(model=config.GEMINI_MODEL)
     payload = {
         "contents": [{"parts": parts}],
         "generationConfig": {
-            "temperature": 0.3,
+            "temperature": temperature,
             "responseMimeType": "application/json",
         },
     }
@@ -369,16 +425,9 @@ def analizar_documento(doc):
     if not hay_clave():
         return {"ok": False, "error": "No hay clave de Gemini configurada en config.py."}
 
-    # Intenta descargar el documento real: primero la fuente oficial, luego la noticia.
-    tipo, dato = "none", None
-    fuente_leida = ""
-    for url in (doc.get("url_fuente"), doc.get("url_noticia")):
-        if not url:
-            continue
-        tipo, dato = _descargar(url)
-        if tipo != "none":
-            fuente_leida = url
-            break
+    # Intenta descargar el documento real: primero la fuente oficial, luego la noticia
+    # (y, si es un escaneado de archive.org inaccesible, su OCR).
+    tipo, dato, fuente_leida = obtener_contenido(doc)
 
     pdf_part = None
     if tipo == "pdf":
@@ -395,8 +444,7 @@ def analizar_documento(doc):
         # No se pudo leer el documento: usar los metadatos como contexto, avisando.
         contenido = "(No se pudo acceder al contenido del documento. Usa solo los metadatos " \
                     "siguientes y deja claro que el resumen se basa en información limitada.)\n" + \
-                    (doc.get("resumen_ejecutivo", "") or "") + " " + \
-                    " ".join(doc.get("puntos_clave", []) or [])
+                    descripcion_fuente(doc)
 
     prompt = PROMPT.format(
         titulo=doc.get("titulo", ""),
@@ -429,4 +477,5 @@ def analizar_documento(doc):
         "puntos_clave": parsed.get("puntos_clave") or [],
         "implicaciones": (parsed.get("implicaciones") or "").strip(),
         "nivel_confianza": nivel,
+        "sin_texto": tipo == "none" and not descripcion_fuente(doc),
     }

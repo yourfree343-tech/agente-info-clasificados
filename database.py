@@ -2,9 +2,16 @@ import sqlite3
 import json
 import os
 import re
+import unicodedata
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "documentos.db")
+
+# Estados de analizado_ia. "gemini" es histórico (hoy significa "resumen generado por
+# cualquier motor IA"); se sigue aceptando al leer, pero lo nuevo se marca como "ia".
+IA_PENDIENTE = ""
+IA_CURADO = "curado"
+IA_SIN_TEXTO = "sin_texto"   # se intentó, pero el documento no tiene texto legible
 
 # Única fuente de verdad para el esquema. (nombre, tipo_sql)
 COLUMNS = [
@@ -263,10 +270,41 @@ def normalize_title(titulo):
     return t
 
 
+def _norm_texto(s):
+    """Minúsculas y sin tildes: 'Área' y 'area' deben encontrarse igual en el buscador."""
+    if s is None:
+        return ""
+    s = unicodedata.normalize("NFKD", str(s).lower())
+    return "".join(ch for ch in s if not unicodedata.combining(ch))
+
+
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    # timeout: el planificador, el detective y las peticiones web escriben desde hilos
+    # distintos; mejor esperar unos segundos a un cerrojo que fallar con "database is locked".
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
+    conn.create_function("norm", 1, _norm_texto, deterministic=True)
     return conn
+
+
+def _terminos_busqueda(texto):
+    """Divide la búsqueda en palabras (cada una debe aparecer) ya normalizadas y con los
+       comodines de LIKE escapados."""
+    out = []
+    for t in _norm_texto(texto).split():
+        t = t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        out.append(f"%{t}%")
+    return out[:8]
+
+
+def _clausula_busqueda(texto, campos):
+    """WHERE para búsqueda multi-palabra, sin distinguir mayúsculas ni tildes: cada
+       palabra tiene que aparecer en al menos uno de los campos."""
+    clauses, params = [], []
+    for term in _terminos_busqueda(texto):
+        clauses.append("(" + " OR ".join(f"norm({c}) LIKE ? ESCAPE '\\'" for c in campos) + ")")
+        params.extend([term] * len(campos))
+    return clauses, params
 
 
 def init_db():
@@ -327,6 +365,15 @@ def init_db():
         c.execute("ALTER TABLE investigaciones ADD COLUMN contraargumento TEXT")
     conn.commit()
     _migrate(conn)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_docs_fecha ON documentos(fecha_documento, fecha_ingreso)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_docs_titulo_norm ON documentos(titulo_norm)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_inv_fecha ON investigaciones(fecha)")
+    conn.commit()
+    # WAL: los lectores (la web) no se bloquean mientras un hilo escribe. Es persistente.
+    try:
+        c.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.DatabaseError:
+        pass
     conn.close()
 
 
@@ -395,16 +442,46 @@ def seed_initial_data():
     conn.close()
 
 
+def _json_seguro(campo):
+    """Expresión SQL que entrega la columna JSON o '[]' si está vacía o mal formada: así
+       json_each() no revienta la consulta entera por una sola fila antigua corrupta."""
+    return (f"CASE WHEN json_valid(documentos.{campo}) THEN documentos.{campo} ELSE '[]' END")
+
+
+_CAMPOS_BUSQUEDA_DOCS = ("titulo", "titulo_original", "resumen_ejecutivo", "implicaciones",
+                         "puntos_clave", "organismo", "id")
+
+# Condición SQL "tiene resumen generado por IA" (cualquier marca que no sea pendiente,
+# curado a mano o sin texto legible; incluye la histórica "gemini").
+_SQL_ES_IA = ("(analizado_ia IS NOT NULL AND analizado_ia NOT IN ('', 'curado', 'sin_texto'))")
+_SQL_PENDIENTE = "(analizado_ia IS NULL OR analizado_ia = '')"
+
+_ORDENES_DOCS = {
+    "fecha_desc": "CASE WHEN fecha_documento IS NULL OR fecha_documento = '' THEN 1 ELSE 0 END, "
+                  "fecha_documento DESC, fecha_ingreso DESC",
+    "fecha_asc": "CASE WHEN fecha_documento IS NULL OR fecha_documento = '' THEN 1 ELSE 0 END, "
+                 "fecha_documento ASC, fecha_ingreso ASC",
+    "ingreso_desc": "fecha_ingreso DESC",
+}
+
+
 def _documents_where(filters):
     """Construye la cláusula WHERE + params compartida por get_documents/count_documents."""
     clauses, params = ["1=1"], []
     if filters:
+        if filters.get("id"):
+            clauses.append("id = ?")
+            params.append(filters["id"])
         if filters.get("categoria"):
             # EXISTS sobre json_each en vez de LIKE sobre el JSON serializado: evita falsos
             # positivos cuando una categoría es substring de otra.
-            clauses.append("EXISTS (SELECT 1 FROM json_each(documentos.categorias) "
-                            "WHERE json_each.value = ?)")
+            clauses.append(f"EXISTS (SELECT 1 FROM json_each({_json_seguro('categorias')}) "
+                           "WHERE json_each.value = ?)")
             params.append(filters["categoria"])
+        if filters.get("fuente"):
+            clauses.append(f"EXISTS (SELECT 1 FROM json_each({_json_seguro('organismo')}) "
+                           "WHERE json_each.value = ?)")
+            params.append(filters["fuente"])
         if filters.get("pais"):
             clauses.append("pais = ?")
             params.append(filters["pais"])
@@ -414,26 +491,40 @@ def _documents_where(filters):
         if filters.get("verificado"):
             clauses.append("verificado = ?")
             params.append(filters["verificado"])
+        estado_ia = filters.get("ia")
+        if estado_ia == "analizado":
+            clauses.append(f"({_SQL_ES_IA} OR analizado_ia = 'curado')")
+        elif estado_ia == "pendiente":
+            clauses.append(_SQL_PENDIENTE)
+        elif estado_ia == "sin_texto":
+            clauses.append("analizado_ia = 'sin_texto'")
         if filters.get("busqueda"):
-            term = f"%{filters['busqueda']}%"
-            clauses.append("(titulo LIKE ? OR resumen_ejecutivo LIKE ? OR implicaciones LIKE ?)")
-            params.extend([term, term, term])
+            cl, pa = _clausula_busqueda(filters["busqueda"], _CAMPOS_BUSQUEDA_DOCS)
+            clauses += cl
+            params += pa
+        # Las fechas pueden ser solo año ("1947") o año-mes: se completan a AAAA-MM-DD para
+        # comparar, si no "1947" quedaría fuera de un filtro "desde 1940-01-01".
         if filters.get("fecha_desde"):
-            clauses.append("fecha_documento >= ?")
+            clauses.append(f"{_SQL_FECHA_COMPLETA} >= ?")
             params.append(filters["fecha_desde"])
         if filters.get("fecha_hasta"):
-            clauses.append("fecha_documento <= ?")
+            clauses.append(f"{_SQL_FECHA_COMPLETA} <= ?")
             params.append(filters["fecha_hasta"])
     return " AND ".join(clauses), params
 
 
-def get_documents(filters=None, limit=None, offset=0):
-    """Devuelve documentos que cumplen los filtros, más recientes primero.
-       Si se pasa limit, pagina en el propio SQL (evita traer todo el dataset)."""
+_SQL_FECHA_COMPLETA = ("(CASE length(fecha_documento) WHEN 4 THEN fecha_documento || '-01-01' "
+                       "WHEN 7 THEN fecha_documento || '-01' ELSE fecha_documento END)")
+
+
+def get_documents(filters=None, limit=None, offset=0, orden=None):
+    """Devuelve documentos que cumplen los filtros (por defecto, más recientes primero;
+       los que no tienen fecha conocida, al final). Si se pasa limit, pagina en el SQL."""
     conn = get_connection()
     c = conn.cursor()
     where, params = _documents_where(filters)
-    query = f"SELECT * FROM documentos WHERE {where} ORDER BY fecha_documento DESC, fecha_ingreso DESC"
+    order_by = _ORDENES_DOCS.get(orden or "fecha_desc", _ORDENES_DOCS["fecha_desc"])
+    query = f"SELECT * FROM documentos WHERE {where} ORDER BY {order_by}"
     if limit is not None:
         query += " LIMIT ? OFFSET ?"
         params = params + [limit, offset]
@@ -464,6 +555,49 @@ def get_all_document_ids():
     return ids
 
 
+def ids_existentes(ids):
+    """Subconjunto de `ids` que ya está en la BD (una consulta por cada 500 ids).
+       El ingestor lo usa para no volver a comprobar ni descargar lo ya archivado."""
+    ids = list(dict.fromkeys(i for i in ids if i))
+    if not ids:
+        return set()
+    conn = get_connection()
+    c = conn.cursor()
+    encontrados = set()
+    for i in range(0, len(ids), 500):
+        trozo = ids[i:i + 500]
+        c.execute(f"SELECT id FROM documentos WHERE id IN ({','.join('?' * len(trozo))})", trozo)
+        encontrados.update(r["id"] for r in c.fetchall())
+    conn.close()
+    return encontrados
+
+
+def actualizar_fecha_provisional(doc_id, fecha):
+    """Sustituye la fecha de un documento SOLO si la que tiene es la provisional (la del día
+       en que se ingresó, que es lo que se guardaba antes cuando la fuente no daba fecha).
+       Devuelve True si cambió algo. Nunca pisa una fecha real ya conocida."""
+    if fecha is None:
+        return False
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute(
+        "UPDATE documentos SET fecha_documento = ? WHERE id = ? "
+        "AND fecha_documento = substr(fecha_ingreso, 1, 10) AND fecha_documento != ?",
+        (fecha, doc_id, fecha),
+    )
+    cambiado = c.rowcount > 0
+    conn.commit()
+    conn.close()
+    return cambiado
+
+
+def _contar_json(c, campo, where="1=1", params=()):
+    """Cuenta los valores de una columna JSON-lista (categorias, organismo)."""
+    c.execute(f"SELECT je.value AS v, COUNT(*) AS n FROM documentos, json_each({_json_seguro(campo)}) je "
+              f"WHERE {where} GROUP BY je.value ORDER BY n DESC, je.value", params)
+    return [(r["v"], r["n"]) for r in c.fetchall() if r["v"]]
+
+
 def get_stats():
     conn = get_connection()
     c = conn.cursor()
@@ -478,20 +612,22 @@ def get_stats():
     hoy = datetime.now().strftime("%Y-%m-%d")
     c.execute("SELECT COUNT(*) as n FROM documentos WHERE substr(fecha_ingreso,1,10) = ?", (hoy,))
     nuevos_hoy = c.fetchone()["n"]
-    c.execute("SELECT COUNT(*) as n FROM documentos WHERE analizado_ia = 'gemini'")
+    c.execute(f"SELECT COUNT(*) as n FROM documentos WHERE {_SQL_ES_IA}")
     analizados_ia = c.fetchone()["n"]
-    c.execute("SELECT COUNT(*) as n FROM documentos WHERE analizado_ia IS NULL OR analizado_ia = ''")
+    c.execute("SELECT COUNT(*) as n FROM documentos WHERE analizado_ia = 'curado'")
+    curados = c.fetchone()["n"]
+    c.execute("SELECT COUNT(*) as n FROM documentos WHERE analizado_ia = 'sin_texto'")
+    sin_texto = c.fetchone()["n"]
+    c.execute(f"SELECT COUNT(*) as n FROM documentos WHERE {_SQL_PENDIENTE}")
     pendientes_ia = c.fetchone()["n"]
     c.execute("SELECT COUNT(*) as n FROM documentos WHERE titulo_es_hecho IS NULL OR titulo_es_hecho = ''")
     pendientes_titulos = c.fetchone()["n"]
-    c.execute("SELECT categorias FROM documentos")
-    cats = {}
-    for row in c.fetchall():
-        try:
-            for cat in json.loads(row["categorias"] or "[]"):
-                cats[cat] = cats.get(cat, 0) + 1
-        except Exception:
-            pass
+    # Décadas a partir de la fecha del documento (los que no tienen fecha real no cuentan).
+    c.execute("SELECT substr(fecha_documento, 1, 3) || '0' AS d, COUNT(*) AS n FROM documentos "
+              "WHERE fecha_documento GLOB '[12][0-9][0-9][0-9]*' GROUP BY d ORDER BY d")
+    por_decada = [{"decada": r["d"], "n": r["n"]} for r in c.fetchall()]
+    cats = _contar_json(c, "categorias")
+    fuentes = _contar_json(c, "organismo")
     conn.close()
     return {
         "total": total,
@@ -500,10 +636,30 @@ def get_stats():
         "por_pais": por_pais,
         "nuevos_hoy": nuevos_hoy,
         "analizados_ia": analizados_ia,
+        "curados": curados,
+        "sin_texto": sin_texto,
         "pendientes_ia": pendientes_ia,
         "titulos_pendientes": pendientes_titulos,
-        "por_categoria": sorted(cats.items(), key=lambda x: -x[1])
+        "por_categoria": cats,
+        "por_fuente": [{"fuente": f, "n": n} for f, n in fuentes[:10]],
+        "num_fuentes": len(fuentes),
+        "por_decada": por_decada,
     }
+
+
+def get_filtros_documentos():
+    """Opciones reales para los selectores de filtro (con su recuento), en vez de listas
+       fijas en el HTML que ofrecían países o categorías que no existen en el archivo."""
+    conn = get_connection()
+    c = conn.cursor()
+    cats = _contar_json(c, "categorias")
+    fuentes = _contar_json(c, "organismo")
+    c.execute("SELECT pais, COUNT(*) AS n FROM documentos WHERE pais IS NOT NULL AND pais != '' "
+              "GROUP BY pais ORDER BY n DESC, pais")
+    paises = [(r["pais"], r["n"]) for r in c.fetchall()]
+    conn.close()
+    fmt = lambda pares: [{"valor": v, "n": n} for v, n in pares]  # noqa: E731
+    return {"categorias": fmt(cats), "fuentes": fmt(fuentes[:40]), "paises": fmt(paises)}
 
 
 def get_last_updates(limit=20):
@@ -534,20 +690,41 @@ def get_document(doc_id):
     return _row_to_doc(row) if row else None
 
 
-def get_pending_analysis(limit=5):
-    """Documentos aún no analizados por la IA (excluye los 'curado')."""
+def get_pending_analysis(limit=5, incluir_sin_texto=False):
+    """Documentos aún no analizados por la IA (excluye los 'curado'). Con
+       incluir_sin_texto, añade al final los que se marcaron como ilegibles (para
+       reintentarlos con un modelo de visión)."""
     conn = get_connection()
     c = conn.cursor()
+    where = _SQL_PENDIENTE + (" OR analizado_ia = 'sin_texto'" if incluir_sin_texto else "")
     c.execute(
-        "SELECT * FROM documentos WHERE analizado_ia IS NULL OR analizado_ia = '' "
-        "ORDER BY fecha_ingreso DESC LIMIT ?", (limit,)
+        f"SELECT * FROM documentos WHERE {where} "
+        "ORDER BY CASE WHEN analizado_ia = 'sin_texto' THEN 1 ELSE 0 END, fecha_ingreso DESC LIMIT ?",
+        (limit,)
     )
     rows = c.fetchall()
     conn.close()
     return [_row_to_doc(r) for r in rows]
 
 
-def update_analysis(doc_id, resumen, puntos_clave, implicaciones, nivel_confianza, marca="gemini"):
+def get_pendientes_con_detallado():
+    """Documentos pendientes de resumen que YA tienen el análisis profundo del informe PDF
+       guardado: se puede sacar su resumen de ahí sin gastar otra llamada al LLM."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute(f"SELECT id, analisis_detallado FROM documentos WHERE {_SQL_PENDIENTE} "
+              "AND analisis_detallado IS NOT NULL AND analisis_detallado != ''")
+    out = []
+    for r in c.fetchall():
+        try:
+            out.append((r["id"], json.loads(r["analisis_detallado"])))
+        except Exception:
+            continue
+    conn.close()
+    return out
+
+
+def update_analysis(doc_id, resumen, puntos_clave, implicaciones, nivel_confianza, marca="ia"):
     conn = get_connection()
     conn.execute(
         "UPDATE documentos SET resumen_ejecutivo = ?, puntos_clave = ?, "
@@ -583,10 +760,11 @@ def get_analisis_detallado(doc_id):
         return None
 
 
-def count_pending_analysis():
+def count_pending_analysis(incluir_sin_texto=False):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) as n FROM documentos WHERE analizado_ia IS NULL OR analizado_ia = ''")
+    where = _SQL_PENDIENTE + (" OR analizado_ia = 'sin_texto'" if incluir_sin_texto else "")
+    c.execute(f"SELECT COUNT(*) as n FROM documentos WHERE {where}")
     n = c.fetchone()["n"]
     conn.close()
     return n
@@ -665,19 +843,41 @@ def set_contraargumento(inv_id, texto):
 
 
 def buscar_documentos_por_texto(terminos, limit=3):
-    """Busca documentos OFICIALES cuyo título mencione alguno de los términos dados.
-       Usado para enlazar cada dossier del detective con respaldo oficial si existe."""
-    terminos = [t for t in (terminos or []) if t and len(t) >= 4][:5]
+    """Busca documentos OFICIALES que mencionen alguno de los términos dados (en el título,
+       el título original o el resumen, sin distinguir tildes) y los ordena por cuántos
+       términos distintos casan. Lo usa el detective para citar respaldo oficial."""
+    terminos = list(dict.fromkeys(
+        _norm_texto(t) for t in (terminos or []) if t and len(t) >= 3))[:8]
     if not terminos:
         return []
+    campos = ("titulo", "titulo_original", "resumen_ejecutivo")
+    clauses, params = [], []
+    for t in terminos:
+        esc = t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        clauses.append("(" + " OR ".join(f"norm({c}) LIKE ? ESCAPE '\\'" for c in campos) + ")")
+        params.extend([f"%{esc}%"] * len(campos))
     conn = get_connection()
     c = conn.cursor()
-    clauses = ["titulo LIKE ?"] * len(terminos)
-    params = [f"%{t}%" for t in terminos] + [limit]
-    c.execute(f"SELECT id, titulo, url_fuente FROM documentos WHERE {' OR '.join(clauses)} LIMIT ?", params)
+    c.execute(f"SELECT id, titulo, url_fuente, resumen_ejecutivo, analizado_ia FROM documentos "
+              f"WHERE {' OR '.join(clauses)} LIMIT 60", params)
     rows = [dict(r) for r in c.fetchall()]
     conn.close()
-    return rows
+
+    def puntuacion(r):
+        texto = _norm_texto(f"{r['titulo']} {r['resumen_ejecutivo']}")
+        # Palabra completa: "cia" no debe puntuar dentro de "especial".
+        return sum(1 for t in terminos if re.search(rf"(?<!\w){re.escape(t)}(?!\w)", texto))
+
+    rows = [r for r in rows if puntuacion(r) > 0]
+    rows.sort(key=lambda r: -puntuacion(r))
+    out = []
+    for r in rows[:limit]:
+        resumen = r["resumen_ejecutivo"] or ""
+        if not r["analizado_ia"] or resumen.startswith("[Pendiente"):
+            resumen = ""
+        out.append({"id": r["id"], "titulo": r["titulo"], "url_fuente": r["url_fuente"],
+                    "resumen": resumen[:400]})
+    return out
 
 
 # --- Cola de temas sugeridos por el usuario (el detective la consume antes que el banco semilla) ---
@@ -733,9 +933,16 @@ def get_temas_investigados(limit=40):
     return temas
 
 
+_CAMPOS_BUSQUEDA_INV = ("titulo", "tema", "gancho", "veredicto", "hechos_verificados",
+                        "hipotesis", "especulacion", "conexiones")
+
+
 def _investigaciones_where(filters):
     clauses, params = ["1=1"], []
     if filters:
+        if filters.get("id"):
+            clauses.append("id = ?")
+            params.append(filters["id"])
         if filters.get("certeza"):
             clauses.append("nivel_certeza = ?")
             params.append(filters["certeza"])
@@ -743,12 +950,9 @@ def _investigaciones_where(filters):
             clauses.append("categoria = ?")
             params.append(filters["categoria"])
         if filters.get("busqueda"):
-            term = f"%{filters['busqueda']}%"
-            clauses.append(
-                "(titulo LIKE ? OR tema LIKE ? OR gancho LIKE ? OR veredicto LIKE ? OR "
-                "hechos_verificados LIKE ? OR hipotesis LIKE ? OR especulacion LIKE ? OR conexiones LIKE ?)"
-            )
-            params.extend([term] * 8)
+            cl, pa = _clausula_busqueda(filters["busqueda"], _CAMPOS_BUSQUEDA_INV)
+            clauses += cl
+            params += pa
     return " AND ".join(clauses), params
 
 

@@ -1,337 +1,388 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Investigaciones — Archivo Clasificado</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%95%B5%EF%B8%8F%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body class="detective-page">
+{% extends "base.html" %}
+{% block title %}Investigaciones — Archivo Clasificado{% endblock %}
 
-<nav>
-  <div class="nav-brand"><span class="icon">👁️</span><span>Archivo·Clasificado</span></div>
-  <div class="nav-tabs">
-    <a class="nav-tab" href="/"><span data-icon="folder"></span>Documentos</a>
-    <a class="nav-tab active" href="/investigaciones"><span data-icon="search"></span>Investigaciones</a>
-    <a class="nav-tab" href="/conexiones"><span data-icon="network"></span>Conexiones</a>
+{% block nav_status %}
+<span class="nav-status" id="detective-status"><span class="status-dot off"></span>Cargando…</span>
+{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div class="page-head-text">
+    <span class="kicker">Zona especulativa · investigación autónoma</span>
+    <h1 class="page-title">Dossiers del Detective</h1>
+    <p class="page-sub">El detective investiga por su cuenta: parte de <b>Wikipedia</b> y de los <b>documentos oficiales</b> del archivo,
+      añade noticias y web, y separa lo probado de lo especulativo — OVNIs, MK-Ultra, Illuminati, Bilderberg y todo lo que decida seguir.</p>
   </div>
-  <div class="nav-right">
-    <span id="detective-status"><span class="status-dot off"></span>Cargando…</span>
-    <button class="btn btn-detective" id="btn-investigar" onclick="investigar()"><span data-icon="search"></span>Investigar ahora</button>
+  <div class="page-head-actions">
+    <button class="btn btn-violet" id="btn-investigar" type="button"><span data-icon="search"></span>Investigar ahora</button>
   </div>
-</nav>
+</header>
 
-<div class="container">
-
-  <header class="hero">
-    <span class="stamp">Zona especulativa</span>
-    <span class="hero-kicker">Investigación autónoma · 2026</span>
-    <h1 class="hero-title">Dossiers del Detective</h1>
-    <p class="hero-sub">El detective investiga en internet por su cuenta — <b>OVNIs</b>, <b>MK-Ultra</b>, <b>Illuminati</b>, <b>Bilderberg</b>, portadas de <b>The Economist</b> y todo lo que decida seguir.</p>
-  </header>
-
-  <div class="detective-warn">
-    <span data-icon="alert-triangle" data-icon-size="14"></span>
-    Estas investigaciones son <b>ESPECULATIVAS</b> y están separadas de los documentos desclasificados oficiales. Las teorías se etiquetan claramente como tales.
-  </div>
-
-  <div class="detective-bar">
-    <div class="info">Motor: <b><span id="motor-name">—</span></b> · Auto: <b><span id="auto-mode">—</span></b> · Total dossiers: <b><span id="total-inv">0</span></b></div>
-    <div class="info">El detective investiga solo cada <b><span id="interval-min">—</span></b> min · puedes pulsar el botón para forzar</div>
-  </div>
-
-  <div class="detective-controls">
-    <div class="dc-group dc-tema">
-      <input type="text" id="tema-input" placeholder="Investiga un tema concreto… (p. ej. Bohemian Grove 2026)"
-             onkeydown="if(event.key==='Enter') investigarTema()">
-      <button class="btn btn-detective" id="btn-tema" onclick="investigarTema()"><span data-icon="search"></span>Investigar tema</button>
-      <button class="btn" onclick="encolarTema()" title="Guardar el tema para que el detective lo investigue en su próximo ciclo automático"><span data-icon="inbox"></span>Añadir a la cola</button>
-    </div>
-    <div class="dc-group dc-filtros">
-      <input type="text" id="inv-search" placeholder="Filtrar dossiers…" oninput="debounceInvLoad()">
-      <select id="inv-cert" onchange="loadInvestigaciones(1)">
-        <option value="">Certeza: todas</option>
-        <option value="ALTO">Certeza alta</option>
-        <option value="MEDIO">Certeza media</option>
-        <option value="BAJO">Certeza baja</option>
-      </select>
-      <select id="inv-cat" onchange="loadInvestigaciones(1)"><option value="">Categoría: todas</option></select>
-    </div>
-  </div>
-  <div class="tema-queue" id="tema-queue" style="display:none">
-    <div class="graph-hint">En cola para el próximo ciclo automático del detective:</div>
-    <div class="tema-queue-list" id="tema-queue-list"></div>
-  </div>
-
-  <div class="results-bar"><span id="inv-count">—</span></div>
-  <div id="investigaciones-container"><div class="loader"><span class="spinner"></span>Cargando dossiers…</div></div>
-  <div class="pagination" id="inv-pagination"></div>
+<div class="banner violet">
+  <span data-icon="alert-triangle" data-icon-size="16"></span>
+  <span>Estas investigaciones son <b>especulativas</b> y están separadas de los documentos desclasificados oficiales. Las teorías se etiquetan como tales; cada dossier indica qué tipo de fuentes lo respaldan.</span>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="task-bar" id="task-bar" hidden aria-live="polite">
+  <span class="task-label"><span class="spinner" aria-hidden="true"></span><span id="task-text"></span></span>
+  <span class="progress indeterminate"><span></span></span>
+  <span class="task-meta" id="task-meta"></span>
+</div>
 
-<script src="/static/js/icons.js"></script>
+<div class="status-panel">
+  <div class="info">
+    <span>Motor: <b id="motor-name">—</b></span>
+    <span>Modo automático: <b id="auto-mode">—</b></span>
+    <span>Dossiers: <b id="total-inv">0</b></span>
+  </div>
+  <div class="info" id="ultimo-fin"></div>
+</div>
+
+<div class="detective-controls">
+  <div class="control-card">
+    <label class="control-title" for="tema-input">Encargar una investigación</label>
+    <div class="control-row">
+      <input class="field" type="text" id="tema-input" maxlength="300" placeholder="Tema concreto… (p. ej. Bohemian Grove 2026)">
+      <button class="btn btn-violet" id="btn-tema" type="button"><span data-icon="search"></span>Investigar ya</button>
+      <button class="btn" id="btn-cola" type="button" title="Guardar el tema para el próximo ciclo automático del detective"><span data-icon="inbox"></span>A la cola</button>
+    </div>
+  </div>
+  <div class="control-card">
+    <label class="control-title" for="inv-search">Filtrar dossiers</label>
+    <div class="control-row">
+      <input class="field" type="search" id="inv-search" data-search placeholder="Buscar… (tecla /)" autocomplete="off">
+      <select class="field" id="inv-cert" aria-label="Certeza">
+        <option value="">Certeza: todas</option><option value="ALTO">Certeza alta</option>
+        <option value="MEDIO">Certeza media</option><option value="BAJO">Certeza baja</option>
+      </select>
+      <select class="field" id="inv-cat" aria-label="Categoría"><option value="">Categoría: todas</option></select>
+    </div>
+  </div>
+</div>
+<div class="tema-queue" id="tema-queue" hidden></div>
+
+<div class="results-bar"><span id="inv-count" aria-live="polite">—</span></div>
+<div id="investigaciones-container"><div class="skeleton"></div><div class="skeleton"></div></div>
+<nav class="pagination" id="inv-pagination" aria-label="Paginación"></nav>
+{% endblock %}
+
+{% block scripts %}
 <script>
 const PAGE_SIZE = 6;
-let currentPage = 1;
-let totalInvs = 0;
-let debounceTimer = null;
-let polling = false;
+const st = { page: 1, total: 0, abiertos: new Set(), items: {}, idFijo: null, primera: true, corriendo: false, desde: null, fase: '', tema: '', motorLocal: false };
+let debounceTimer = null, relojTimer = null;
+const $ = id => document.getElementById(id);
 
-function debounceInvLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => loadInvestigaciones(1), 350); }
-
+/* ---------------- Estado del detective ---------------- */
 async function checkEstado() {
-  try {
-    const r = await fetch('/api/detective/estado');
-    const e = await r.json();
-    document.getElementById('motor-name').textContent = e.motor || '—';
-    document.getElementById('total-inv').textContent = e.total || 0;
-    document.getElementById('auto-mode').textContent = e.auto ? 'sí (' + (e.interval_min||'—') + ' min)' : 'no';
-    document.getElementById('interval-min').textContent = e.interval_min || '—';
-    const dot = e.en_curso ? 'busy' : (e.motor_disponible ? 'ok' : 'off');
-    const label = e.en_curso ? 'investigando…' : (e.motor_disponible ? 'motor activo' : 'motor no disponible');
-    document.getElementById('detective-status').innerHTML = `<span class="status-dot ${dot}"></span>${label}`;
-    // Si hay una investigación en marcha (p. ej. la automática), refléjalo y vigílala.
-    if (e.en_curso) { setBusy(true); pollDetective(); }
-    return e;
-  } catch(e) { return null; }
+  const e = await api('/api/detective/estado');
+  if (!e || e.ok === false) return null;
+  $('motor-name').textContent = e.motor || '—';
+  $('total-inv').textContent = fmtNum(e.total || 0);
+  $('auto-mode').textContent = e.auto ? `cada ${e.interval_min || '—'} min` : 'desactivado';
+  $('ultimo-fin').textContent = e.ultimo_fin && !e.en_curso ? `Última investigación ${fmtRelativo(e.ultimo_fin)}` : '';
+  const dot = e.en_curso ? 'busy' : (e.motor_disponible ? 'ok' : 'off');
+  const label = e.en_curso ? 'investigando…' : (e.motor_disponible ? 'motor activo' : 'motor no disponible');
+  $('detective-status').innerHTML = `<span class="status-dot ${dot}"></span>${label}`;
+  st.motorLocal = !!e.motor_local;
+  pintarProgreso(e);
+  setBusy(!!e.en_curso);
+  return e;
+}
+
+function pintarProgreso(e) {
+  st.corriendo = !!e.en_curso;
+  st.desde = e.desde; st.fase = e.fase || 'preparando'; st.tema = e.tema || '';
+  $('task-bar').hidden = !st.corriendo;
+  clearInterval(relojTimer);
+  if (!st.corriendo) return;
+  const pintar = () => {
+    $('task-text').innerHTML = `<strong>Investigando</strong>${st.tema ? ' · ' + escHtml(st.tema) : ''} — ${escHtml(st.fase)}`;
+    const seg = st.desde ? (Date.now() - new Date(st.desde).getTime()) / 1000 : 0;
+    $('task-meta').textContent = fmtDuracion(seg) + (st.motorLocal ? ' · con el modelo local tarda varios minutos' : '');
+  };
+  pintar();
+  relojTimer = setInterval(pintar, 1000);
 }
 
 function setBusy(busy) {
-  const nav = document.getElementById('btn-investigar');
-  const tbtn = document.getElementById('btn-tema');
-  if (nav) { nav.disabled = busy; nav.innerHTML = iconSvg('search',{size:14}) + (busy ? 'Investigando…' : 'Investigar ahora'); }
-  if (tbtn) { tbtn.disabled = busy; tbtn.innerHTML = iconSvg('search',{size:14}) + (busy ? 'Investigando…' : 'Investigar tema'); }
+  [['btn-investigar', 'Investigar ahora'], ['btn-tema', 'Investigar ya']].forEach(([id, txt]) => {
+    const b = $(id);
+    b.disabled = busy; b.classList.toggle('is-busy', busy);
+    b.innerHTML = iconSvg('search', {size: 14}) + (busy ? 'Investigando…' : txt);
+  });
 }
 
-// Vigila el estado cada 5 s hasta que la investigación en curso termine.
-function pollDetective() {
-  if (polling) return;
-  polling = true;
+let vigilando = false;
+function vigilar() {
+  if (vigilando) return;
+  vigilando = true;
   const tick = async () => {
-    let e = null;
-    try { e = await (await fetch('/api/detective/estado')).json(); } catch(_) {}
+    const e = await checkEstado();
     if (e && !e.en_curso) {
-      polling = false;
-      setBusy(false);
+      vigilando = false;
       await loadInvestigaciones(1);
-      if (e.ultimo_error) showToast('Error: ' + e.ultimo_error);
-      else showToast('Nuevo dossier: ' + (e.ultimo_titulo || 'caso cerrado'));
+      if (e.ultimo_error) showToast('El detective no pudo terminar: ' + e.ultimo_error, 'error');
+      else {
+        showToast('Nuevo dossier: ' + (e.ultimo_titulo || 'caso cerrado'), 'ok');
+        if (e.ultimo_id) abrir(e.ultimo_id, true);
+      }
+      loadCola();
       return;
     }
-    setTimeout(tick, 5000);
+    setTimeout(tick, 3000);
   };
-  setTimeout(tick, 5000);
-}
-
-function invParams() {
-  const params = new URLSearchParams();
-  const q = document.getElementById('inv-search').value.trim();
-  const cert = document.getElementById('inv-cert').value;
-  const cat = document.getElementById('inv-cat').value;
-  if (q) params.set('busqueda', q);
-  if (cert) params.set('certeza', cert);
-  if (cat) params.set('categoria', cat);
-  return params;
-}
-
-async function loadInvestigaciones(page) {
-  currentPage = page || currentPage || 1;
-  const params = invParams();
-  params.set('page', currentPage);
-  params.set('page_size', PAGE_SIZE);
-  try {
-    const r = await fetch('/api/investigaciones?' + params.toString());
-    const data = await r.json();
-    totalInvs = data.total;
-    // Si se borró el último dossier de la página actual, retrocede una página.
-    if (!data.items.length && totalInvs > 0 && currentPage > 1) {
-      return loadInvestigaciones(currentPage - 1);
-    }
-    poblarCategorias(data.categorias || []);
-    renderInvList(data.items || []);
-  } catch(e) {}
-}
-
-function poblarCategorias(cats) {
-  const sel = document.getElementById('inv-cat');
-  const actual = sel.value;
-  sel.innerHTML = '<option value="">Categoría: todas</option>' +
-    cats.map(c => `<option value="${escAttr2(c)}">${escHtml(c)}</option>`).join('');
-  sel.value = actual;
-}
-
-function renderInvList(items) {
-  const c = document.getElementById('investigaciones-container');
-  const cnt = document.getElementById('inv-count');
-
-  if (!totalInvs && !items.length) {
-    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('box',{size:40})}</div>`
-      + `<p>Aún no hay dossiers. El detective está investigando en segundo plano — vuelve en un rato, o pulsa "Investigar ahora".</p></div>`;
-    cnt.textContent = '';
-    document.getElementById('inv-pagination').innerHTML = '';
-    return;
-  }
-  const totalPages = Math.max(1, Math.ceil(totalInvs / PAGE_SIZE));
-  cnt.innerHTML = `<strong>${totalInvs}</strong> dossier${totalInvs!==1?'s':''} · página <strong>${currentPage}</strong> de <strong>${totalPages}</strong>`;
-  if (!items.length) {
-    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('search',{size:40})}</div><p>Ningún dossier coincide con el filtro.</p></div>`;
-    document.getElementById('inv-pagination').innerHTML = '';
-    return;
-  }
-  c.innerHTML = items.map(render).join('');
-  renderInvPagination(totalPages);
-}
-
-function renderInvPagination(totalPages) {
-  const p = document.getElementById('inv-pagination');
-  if (totalPages <= 1) { p.innerHTML = ''; return; }
-  p.innerHTML = `
-    <button class="btn" onclick="loadInvestigaciones(1)" ${currentPage===1?'disabled':''}>« primera</button>
-    <button class="btn" onclick="loadInvestigaciones(${currentPage-1})" ${currentPage===1?'disabled':''}>‹ anterior</button>
-    <span class="page-info">${currentPage} / ${totalPages}</span>
-    <button class="btn" onclick="loadInvestigaciones(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>siguiente ›</button>
-    <button class="btn" onclick="loadInvestigaciones(${totalPages})" ${currentPage===totalPages?'disabled':''}>última »</button>`;
-}
-
-async function loadCola() {
-  try {
-    const cola = await (await fetch('/api/temas')).json();
-    const box = document.getElementById('tema-queue');
-    const list = document.getElementById('tema-queue-list');
-    if (!cola.length) { box.style.display = 'none'; return; }
-    box.style.display = 'block';
-    list.innerHTML = cola.map(t => `<span class="tema-chip">${escHtml(t.tema)}`
-      + `<button onclick="borrarTemaCola(${t.id})" title="Quitar de la cola">${iconSvg('x',{size:11})}</button></span>`).join('');
-  } catch(e) {}
-}
-
-async function encolarTema() {
-  const input = document.getElementById('tema-input');
-  const tema = input.value.trim();
-  if (!tema) { showToast('Escribe un tema primero.'); return; }
-  try {
-    const r = await fetch('/api/temas', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({tema}) });
-    const d = await r.json();
-    if (d.ok) { input.value = ''; showToast('Tema añadido a la cola.'); loadCola(); }
-    else showToast(d.error || 'No se pudo añadir a la cola.');
-  } catch(e) { showToast('Sin conexión.'); }
-}
-
-async function borrarTemaCola(id) {
-  try { await fetch('/api/temas/'+id, { method: 'DELETE' }); loadCola(); } catch(e) {}
-}
-
-async function generarContraargumento(id, btnEl) {
-  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = iconSvg('help-circle',{size:14}) + 'Pensando…';
-  showToast('Generando réplica escéptica…');
-  try {
-    const r = await fetch('/api/investigacion/'+encodeURIComponent(id)+'/contraargumento', {method:'POST'});
-    const d = await r.json();
-    if (d.ok) { showToast('Réplica escéptica lista.'); await loadInvestigaciones(currentPage); }
-    else { showToast(d.error || 'No se pudo generar.'); btnEl.disabled = false; btnEl.innerHTML = o; }
-  } catch(e) { showToast('Sin conexión.'); btnEl.disabled = false; btnEl.innerHTML = o; }
-}
-
-function lista(arr) {
-  return (arr && arr.length) ? '<ul>' + arr.map(x => `<li>${escHtml(x)}</li>`).join('') + '</ul>' : '<div style="color:var(--muted);font-size:12px">—</div>';
-}
-
-function render(v) {
-  const fuentes = (v.fuentes || []).map(u => `<a href="${escAttr(u)}" target="_blank" rel="noopener">${escHtml(u)}</a>`).join('');
-  const fecha = (v.fecha || '').replace('T',' ').split('.')[0];
-  const imgs = (v.imagenes || []).map(im => `
-    <a class="inv-img" href="${escAttr(im.url)}" target="_blank" rel="noopener" title="${escHtml(im.titulo || im.origen || '')}">
-      <img src="${escAttr(im.thumb || im.url)}" alt="${escHtml(im.titulo || '')}" loading="lazy" onerror="this.style.display='none'">
-      ${im.origen ? `<div class="cap">${escHtml(im.origen)}</div>` : ''}
-    </a>`).join('');
-  const cat = v.categoria ? `<span class="inv-cat">${iconSvg('tag',{size:11})} ${escHtml(v.categoria)}</span>` : '';
-  const certClass = 'cert-' + (v.nivel_certeza || 'MEDIO');
-  const respaldo = (v.documentos_relacionados && v.documentos_relacionados.length) ? `
-    <div class="inv-respaldo"><h4>${iconSvg('check-circle',{size:12})}Respaldo en el archivo oficial</h4>${
-      v.documentos_relacionados.map(d => `<a href="/?busqueda=${encodeURIComponent(d.titulo)}" target="_blank">${escHtml(d.titulo)}</a>`).join('')
-    }</div>` : '';
-  const contraBlock = v.contraargumento ? `
-    <div class="inv-block"><h4 style="color:var(--info)">${iconSvg('help-circle',{size:13})}Voz escéptica</h4><div class="inv-contraargumento">${escHtml(v.contraargumento)}</div></div>` : '';
-  const contraBtn = v.contraargumento ? '' :
-    `<button class="btn btn-skeptic" onclick="generarContraargumento('${v.id}', this)">${iconSvg('help-circle',{size:14})}Réplica escéptica</button>`;
-  return `
-  <div class="inv-card">
-    <div class="inv-titulo">${escHtml(v.titulo || v.tema)}</div>
-    <div class="inv-meta">${escHtml(v.id)} · ${escHtml(fecha)} · ${cat} <span class="${certClass}">certeza: ${escHtml(v.nivel_certeza||'—')}</span> · ${escHtml(v.motor||'')}</div>
-    ${v.gancho ? `<div class="inv-gancho">${escHtml(v.gancho)}</div>` : ''}
-    ${respaldo}
-    ${imgs ? `<div class="inv-images">${imgs}</div>` : ''}
-    <div class="inv-block hechos"><h4>${iconSvg('check-circle',{size:13})}Hechos verificados</h4>${lista(v.hechos_verificados)}</div>
-    <div class="inv-block hipotesis"><h4>${iconSvg('eye',{size:13})}Hipótesis y conexiones</h4>${lista(v.hipotesis)}</div>
-    ${(v.conexiones&&v.conexiones.length)?`<div class="inv-block conexiones"><h4>${iconSvg('link',{size:13})}Patrones / símbolos</h4>${lista(v.conexiones)}</div>`:''}
-    <div class="inv-block especulacion"><h4>${iconSvg('alert-triangle',{size:13})}Especulación (NO probado)</h4>${lista(v.especulacion)}</div>
-    <div class="inv-block"><h4 style="color:var(--text)">${iconSvg('activity',{size:13})}Veredicto del analista</h4><div class="inv-veredicto">${escHtml(v.veredicto||'—')}</div></div>
-    ${contraBlock}
-    ${fuentes ? `<div class="inv-fuentes"><strong style="color:var(--muted)">Fuentes:</strong><br>${fuentes}</div>` : ''}
-    <div class="inv-actions">
-      <a class="btn btn-informe" href="/api/investigacion/${encodeURIComponent(v.id)}/pdf">${iconSvg('download',{size:14})}Descargar dossier (PDF)</a>
-      ${contraBtn}
-      <button class="btn btn-danger" onclick="borrarInvestigacion('${v.id}', this)">${iconSvg('trash',{size:14})}Borrar</button>
-    </div>
-  </div>`;
-}
-
-async function borrarInvestigacion(id, btnEl) {
-  if (!confirm('¿Borrar este dossier? No se puede deshacer.')) return;
-  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = iconSvg('trash',{size:14}) + 'Borrando…';
-  try {
-    const r = await fetch('/api/investigacion/'+encodeURIComponent(id), { method: 'DELETE' });
-    const d = await r.json();
-    if (d.ok) { showToast('Dossier borrado.'); await loadInvestigaciones(currentPage); }
-    else { showToast(d.error || 'No se pudo borrar.'); btnEl.disabled = false; btnEl.innerHTML = o; }
-  } catch(e) { showToast('Sin conexión.'); btnEl.disabled = false; btnEl.innerHTML = o; }
+  setTimeout(tick, 2500);
 }
 
 async function investigar(tema) {
   setBusy(true);
-  showToast(tema
-    ? 'Investigando: ' + tema + ' — tardará varios minutos con el modelo local.'
-    : 'El detective está investigando. Tardará varios minutos con el modelo local.');
-  try {
-    const url = '/api/investigar' + (tema ? '?tema=' + encodeURIComponent(tema) : '');
-    const r = await fetch(url, { method: 'POST' });
-    const d = await r.json();
-    // d.ok = iniciada; 409 con en_curso = ya estaba corriendo (también la vigilamos).
-    if (!d.ok && !d.en_curso) {
-      showToast(d.error || 'No se pudo investigar.');
-      setBusy(false);
-      return;
-    }
-    document.getElementById('tema-input').value = '';
-    pollDetective();   // el dossier aparecerá cuando el modelo termine
-  } catch(e) {
-    showToast('No se pudo conectar con el servidor.');
-    setBusy(false);
+  const d = await api('/api/investigar' + (tema ? '?tema=' + encodeURIComponent(tema) : ''), { method: 'POST' });
+  if (!d.ok && !d.en_curso) { showToast(d.error || 'No se pudo investigar.', 'error'); setBusy(false); return; }
+  $('tema-input').value = '';
+  showToast(tema ? 'Investigando: ' + tema : 'El detective ha salido a investigar.');
+  await checkEstado();
+  vigilar();
+}
+
+/* ---------------- Cola de temas ---------------- */
+async function loadCola() {
+  const cola = await api('/api/temas');
+  const box = $('tema-queue');
+  if (!Array.isArray(cola) || !cola.length) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  box.innerHTML = `<span>En cola para el próximo ciclo automático:</span>` + cola.map((t, i) =>
+    `<span class="tema-chip"><span class="pos">${i + 1}</span>${escHtml(t.tema)}<button type="button" data-borrar="${t.id}" aria-label="Quitar «${escHtml(t.tema)}» de la cola">${iconSvg('x', {size: 11})}</button></span>`).join('');
+}
+$('tema-queue').addEventListener('click', async e => {
+  const b = e.target.closest('[data-borrar]');
+  if (!b) return;
+  await api('/api/temas/' + b.dataset.borrar, { method: 'DELETE' });
+  loadCola();
+});
+
+async function encolarTema() {
+  const input = $('tema-input'), tema = input.value.trim();
+  if (!tema) { showToast('Escribe un tema primero.'); input.focus(); return; }
+  const d = await api('/api/temas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tema }) });
+  if (d.ok) { input.value = ''; showToast('Tema añadido a la cola.', 'ok'); loadCola(); }
+  else showToast(d.error || 'No se pudo añadir a la cola.', 'error');
+}
+
+/* ---------------- Dossiers ---------------- */
+function invParams() {
+  const p = new URLSearchParams();
+  const q = $('inv-search').value.trim(), cert = $('inv-cert').value, cat = $('inv-cat').value;
+  if (q) p.set('busqueda', q);
+  if (cert) p.set('certeza', cert);
+  if (cat) p.set('categoria', cat);
+  return p;
+}
+
+async function loadInvestigaciones(page) {
+  if (page) st.page = page;
+  const params = invParams();
+  const url = new URLSearchParams(params);
+  if (st.idFijo) { params.set('id', st.idFijo); url.set('id', st.idFijo); }
+  if (st.page > 1) url.set('page', st.page);
+  escribirParams(url);
+  params.set('page', st.page);
+  params.set('page_size', PAGE_SIZE);
+
+  const c = $('investigaciones-container');
+  if (!st.primera) c.classList.add('is-refreshing');
+  const data = await api('/api/investigaciones?' + params.toString());
+  c.classList.remove('is-refreshing');
+  st.primera = false;
+  if (!data || data.ok === false || !Array.isArray(data.items)) {
+    c.innerHTML = `<div class="empty"><p>No se pudieron cargar los dossiers.</p></div>`;
+    return;
+  }
+  st.total = data.total;
+  const totalPaginas = Math.max(1, Math.ceil(st.total / PAGE_SIZE));
+  if (!data.items.length && st.total > 0 && st.page > 1) return loadInvestigaciones(totalPaginas);
+  poblarCategorias(data.categorias || []);
+  renderLista(data.items, totalPaginas);
+  if (st.idFijo && data.items.length === 1) abrir(data.items[0].id, true);
+}
+
+function poblarCategorias(cats) {
+  const sel = $('inv-cat'), actual = sel.value;
+  sel.innerHTML = '<option value="">Categoría: todas</option>' + cats.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+  sel.value = actual;
+}
+
+function renderLista(items, totalPaginas) {
+  const c = $('investigaciones-container'), cnt = $('inv-count');
+  if (st.idFijo) {
+    cnt.innerHTML = `<span class="chip" style="background:var(--violet-soft);border-color:var(--violet-border);color:var(--violet-2)">Dossier ${escHtml(st.idFijo)} <button type="button" id="quitar-id" aria-label="Ver todos los dossiers">${iconSvg('x', {size: 11})}</button></span>`;
+    $('quitar-id').onclick = () => { st.idFijo = null; loadInvestigaciones(1); };
+  } else {
+    cnt.innerHTML = st.total ? `<strong>${fmtNum(st.total)}</strong> ${st.total === 1 ? 'dossier' : 'dossiers'}`
+      + (totalPaginas > 1 ? ` · página <strong>${st.page}</strong> de <strong>${totalPaginas}</strong>` : '') : '';
+  }
+  if (!st.total) {
+    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('box', {size: 36})}</div><p>Aún no hay dossiers. El detective investiga solo en segundo plano; o pulsa «Investigar ahora».</p></div>`;
+    $('inv-pagination').innerHTML = '';
+    return;
+  }
+  if (!items.length) {
+    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('search', {size: 36})}</div><p>Ningún dossier coincide con el filtro.</p></div>`;
+    $('inv-pagination').innerHTML = '';
+    return;
+  }
+  st.items = Object.fromEntries(items.map(v => [v.id, v]));
+  c.innerHTML = items.map(render).join('');
+  renderPagination($('inv-pagination'), st.page, totalPaginas, p => { loadInvestigaciones(p); document.querySelector('.results-bar').scrollIntoView({ behavior: 'smooth' }); });
+}
+
+const TIPO_ORDEN = ['oficial', 'archivo', 'referencia', 'prensa', 'web', 'redes'];
+const TIPO_TXT = { oficial: 'oficiales', archivo: 'de archivo', referencia: 'de referencia', prensa: 'de prensa', web: 'web', redes: 'de redes/vídeo' };
+
+function calidadFuentes(fd) {
+  if (!fd || !fd.items || !fd.items.length) return '<span class="src-quality">Sin fuentes registradas</span>';
+  const pt = fd.por_tipo || {};
+  return `<span class="src-quality"><span class="sq">${iconSvg('link', {size: 12})}<b>${fd.items.length}</b> fuentes</span>` +
+    TIPO_ORDEN.filter(t => pt[t]).map(t => `<span class="sq ${t}"><b>${pt[t]}</b> ${TIPO_TXT[t]}</span>`).join('') + '</span>';
+}
+
+function certeza(nivel) {
+  const n = ['ALTO', 'MEDIO', 'BAJO'].includes(nivel) ? nivel : 'MEDIO';
+  const txt = { ALTO: 'alta', MEDIO: 'media', BAJO: 'baja' }[n];
+  return `<span class="certeza ${n}" title="Nivel de certeza del analista"><span class="seg" aria-hidden="true"><i></i><i></i><i></i></span>certeza ${txt}</span>`;
+}
+
+function lista(arr) {
+  return (arr && arr.length) ? '<ul>' + arr.map(x => `<li>${textoConEnlaces(x)}</li>`).join('') + '</ul>'
+    : '<div style="color:var(--muted);font-size:12.5px">—</div>';
+}
+
+function render(v) {
+  const abierto = st.abiertos.has(v.id);
+  const imgs = (v.imagenes || []).filter(im => im && (im.thumb || im.url));
+  const thumbs = imgs.slice(0, 4).map(im => `<a href="${escUrl(im.url)}" target="_blank" rel="noopener noreferrer" title="${escHtml(im.titulo || im.origen || '')}">
+      <img src="${escUrl(im.thumb || im.url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.remove()"></a>`).join('');
+  const grid = imgs.map(im => `
+    <a class="inv-img" href="${escUrl(im.url)}" target="_blank" rel="noopener noreferrer" title="${escHtml(im.titulo || im.origen || '')}">
+      <img src="${escUrl(im.thumb || im.url)}" alt="${escHtml(im.titulo || '')}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.remove()">
+      ${im.origen ? `<div class="cap">${escHtml(im.origen)}</div>` : ''}
+    </a>`).join('');
+  const rel = v.documentos_relacionados || [];
+  const respaldo = rel.length ? `
+    <div class="inv-respaldo"><h4>${iconSvg('shield', {size: 13})}Respaldo en el archivo oficial</h4>${
+      rel.map(d => `<a href="/?doc=${encodeURIComponent(d.id)}">${escHtml(d.titulo)}</a>`).join('')}</div>` : '';
+  const fd = v.fuentes_detalle || { items: [] };
+  const fuentes = fd.items.length ? `
+    <div class="fuentes-grupo"><h4>Fuentes citadas</h4><div class="fuentes-list">${
+      fd.items.map(f => `<div class="fuente ${f.tipo}"><span class="ftipo">${escHtml(f.etiqueta)}</span><a href="${escUrl(f.url)}" target="_blank" rel="noopener noreferrer" title="${escHtml(f.url)}">${escHtml(f.dominio)}</a></div>`).join('')
+    }</div></div>` : '';
+  const contra = v.contraargumento
+    ? `<div class="inv-block esceptica"><h4>${iconSvg('help-circle', {size: 13})}Voz escéptica</h4><div class="inv-texto">${escHtml(v.contraargumento)}</div></div>` : '';
+  return `
+  <article class="inv-card ${abierto ? 'open' : ''}" data-id="${escHtml(v.id)}">
+    <div class="inv-top">
+      <span title="${escHtml(v.fecha || '')}">${escHtml(fmtFechaHora(v.fecha))}</span>
+      ${v.categoria ? `<span class="inv-cat">${iconSvg('tag', {size: 11})}${escHtml(v.categoria)}</span>` : ''}
+      ${certeza(v.nivel_certeza)}
+      <span>${escHtml(v.motor || '')}</span>
+    </div>
+    <h2 class="inv-titulo">${escHtml(v.titulo || v.tema)}</h2>
+    ${v.gancho ? `<div class="inv-gancho">${escHtml(v.gancho)}</div>` : ''}
+    <div class="inv-summary">
+      ${thumbs && !abierto ? `<div class="inv-thumbs">${thumbs}</div>` : ''}
+      ${calidadFuentes(fd)}
+      ${rel.length ? `<span class="src-quality"><span class="sq oficial">${iconSvg('shield', {size: 12})}<b>${rel.length}</b> en el archivo oficial</span></span>` : ''}
+    </div>
+    <div class="inv-body" id="inv-body-${escHtml(v.id)}">
+      ${respaldo}
+      ${grid ? `<div class="inv-images">${grid}</div>` : ''}
+      <div class="inv-cols">
+        <div class="inv-block hechos"><h4>${iconSvg('check-circle', {size: 13})}Hechos verificados</h4>${lista(v.hechos_verificados)}</div>
+        <div class="inv-block hipotesis"><h4>${iconSvg('eye', {size: 13})}Hipótesis y conexiones</h4>${lista(v.hipotesis)}</div>
+      </div>
+      ${(v.conexiones && v.conexiones.length) ? `<div class="inv-block conexiones"><h4>${iconSvg('link', {size: 13})}Patrones / símbolos</h4>${lista(v.conexiones)}</div>` : ''}
+      <div class="inv-block especulacion"><h4>${iconSvg('alert-triangle', {size: 13})}Especulación (no probado)</h4>${lista(v.especulacion)}</div>
+      <div class="inv-block"><h4>${iconSvg('activity', {size: 13})}Veredicto del analista</h4><div class="inv-texto">${textoConEnlaces(v.veredicto || '—')}</div></div>
+      ${contra}
+      ${fuentes}
+    </div>
+    <div class="inv-actions">
+      <button class="btn btn-violet btn-sm" type="button" data-action="toggle" aria-expanded="${abierto}" aria-controls="inv-body-${escHtml(v.id)}">${iconSvg('book-open', {size: 14})}${abierto ? 'Plegar dossier' : 'Leer dossier completo'}</button>
+      <a class="btn btn-sm" href="/api/investigacion/${encodeURIComponent(v.id)}/pdf">${iconSvg('download', {size: 14})}PDF</a>
+      ${v.contraargumento ? '' : `<button class="btn btn-info btn-sm" type="button" data-action="esceptica">${iconSvg('help-circle', {size: 14})}Réplica escéptica</button>`}
+      <a class="btn btn-ghost btn-sm" href="/conexiones?caso=${encodeURIComponent(v.id)}">${iconSvg('network', {size: 14})}Ver conexiones</a>
+      <button class="btn btn-danger btn-sm" type="button" data-action="borrar" style="margin-left:auto">${iconSvg('trash', {size: 14})}Borrar</button>
+    </div>
+  </article>`;
+}
+
+function abrir(id, forzar) {
+  const card = document.querySelector(`.inv-card[data-id="${CSS.escape(id)}"]`);
+  const v = st.items[id];
+  if (!card || !v) return;
+  const open = forzar === undefined ? !card.classList.contains('open') : forzar;
+  if (open) st.abiertos.add(id); else st.abiertos.delete(id);
+  // Se repinta solo esta tarjeta: al abrir, la tira de miniaturas deja paso a la galería.
+  card.outerHTML = render(v);
+  const nueva = document.querySelector(`.inv-card[data-id="${CSS.escape(id)}"]`);
+  if (open && nueva) {
+    nueva.querySelector('[data-action="toggle"]').focus({ preventScroll: true });
+    if (forzar) nueva.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
-function investigarTema() {
-  const t = (document.getElementById('tema-input').value || '').trim();
-  if (!t) { showToast('Escribe un tema primero.'); return; }
+$('investigaciones-container').addEventListener('click', async e => {
+  const b = e.target.closest('[data-action]');
+  if (!b) return;
+  const card = b.closest('.inv-card'), id = card.dataset.id;
+  if (b.dataset.action === 'toggle') abrir(id);
+  if (b.dataset.action === 'esceptica') generarContraargumento(id, b);
+  if (b.dataset.action === 'borrar') borrarInvestigacion(id, b);
+});
+
+async function generarContraargumento(id, btn) {
+  const o = btn.innerHTML;
+  btn.disabled = true; btn.classList.add('is-busy'); btn.innerHTML = iconSvg('help-circle', {size: 14}) + 'Pensando…';
+  const d = await api('/api/investigacion/' + encodeURIComponent(id) + '/contraargumento', { method: 'POST' });
+  if (d.ok) { showToast('Réplica escéptica lista.', 'ok'); st.abiertos.add(id); await loadInvestigaciones(); }
+  else { showToast(d.error || 'No se pudo generar.', 'error'); btn.disabled = false; btn.classList.remove('is-busy'); btn.innerHTML = o; }
+}
+
+async function borrarInvestigacion(id, btn) {
+  if (!confirm('¿Borrar este dossier? No se puede deshacer.')) return;
+  btn.disabled = true;
+  const d = await api('/api/investigacion/' + encodeURIComponent(id), { method: 'DELETE' });
+  if (d.ok) { showToast('Dossier borrado.', 'ok'); st.abiertos.delete(id); if (st.idFijo === id) st.idFijo = null; await loadInvestigaciones(); checkEstado(); }
+  else { showToast(d.error || 'No se pudo borrar.', 'error'); btn.disabled = false; }
+}
+
+/* ---------------- Controles ---------------- */
+$('btn-investigar').addEventListener('click', () => investigar(null));
+$('btn-tema').addEventListener('click', () => {
+  const t = $('tema-input').value.trim();
+  if (!t) { showToast('Escribe un tema primero.'); $('tema-input').focus(); return; }
   investigar(t);
-}
+});
+$('tema-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-tema').click(); });
+$('btn-cola').addEventListener('click', encolarTema);
+$('inv-search').addEventListener('input', () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => { st.idFijo = null; loadInvestigaciones(1); }, 300); });
+$('inv-cert').addEventListener('change', () => { st.idFijo = null; loadInvestigaciones(1); });
+$('inv-cat').addEventListener('change', () => { st.idFijo = null; loadInvestigaciones(1); });
 
-function showToast(m) {
-  const t = document.getElementById('toast');
-  t.textContent = m; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 4500);
-}
-function escHtml(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function escAttr(s) { if (!s) return '#'; if (!/^https?:\/\//i.test(s)) return '#'; return String(s).replace(/"/g,'&quot;'); }
-function escAttr2(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
-
-(async function() {
-  mountIcons();
-  await Promise.all([loadInvestigaciones(1), checkEstado(), loadCola()]);
-  setInterval(() => { loadInvestigaciones(currentPage); checkEstado(); loadCola(); }, 60000);
+(async function () {
+  const p = leerParams();
+  if (p.get('busqueda')) $('inv-search').value = p.get('busqueda');
+  if (p.get('certeza')) $('inv-cert').value = p.get('certeza');
+  if (p.get('categoria')) {   // aún sin opciones: se añade una provisional para no perder el filtro
+    $('inv-cat').insertAdjacentHTML('beforeend', `<option value="${escHtml(p.get('categoria'))}">${escHtml(p.get('categoria'))}</option>`);
+    $('inv-cat').value = p.get('categoria');
+  }
+  st.idFijo = p.get('id');
+  st.page = Math.max(1, parseInt(p.get('page') || '1', 10) || 1);
+  if (st.idFijo) st.abiertos.add(st.idFijo);
+  const [, e] = await Promise.all([loadInvestigaciones(), checkEstado(), loadCola()]);
+  if (e && e.en_curso) vigilar();
+  setInterval(() => { if (!vigilando) { checkEstado().then(x => { if (x && x.en_curso) vigilar(); }); loadCola(); } }, 60000);
 })();
 </script>
-</body>
-</html>
+{% endblock %}

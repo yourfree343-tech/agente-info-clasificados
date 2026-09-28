@@ -24,6 +24,12 @@ if errorlevel 1 (
     exit /b 1
 )
 
+if not exist config.py (
+    echo Creando config.py a partir de la plantilla config.example.py...
+    copy /Y config.example.py config.py >nul
+    echo Recuerda poner tu clave de API en config.py para activar la IA.
+)
+
 echo.
 echo Iniciando servidor...
 echo Se abrira el navegador automaticamente.

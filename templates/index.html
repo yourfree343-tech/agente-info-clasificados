@@ -1,411 +1,558 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Archivo Clasificado</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%91%81%EF%B8%8F%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Documentos — Archivo Clasificado{% endblock %}
 
-<nav>
-  <div class="nav-brand"><span class="icon">👁️</span><span>Archivo·Clasificado</span></div>
-  <div class="nav-tabs">
-    <a class="nav-tab active" href="/"><span data-icon="folder"></span>Documentos</a>
-    <a class="nav-tab" href="/investigaciones"><span data-icon="search"></span>Investigaciones</a>
-    <a class="nav-tab" href="/conexiones"><span data-icon="network"></span>Conexiones</a>
+{% block nav_status %}
+<span class="nav-status" id="update-status"><span class="status-dot off"></span>Cargando…</span>
+{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div class="page-head-text">
+    <span class="kicker">Archivo de inteligencia · desclasificado</span>
+    <h1 class="page-title">Archivos Clasificados</h1>
+    <p class="page-sub">Documentos oficiales desclasificados de NARA, el FBI Vault, archive.org y peticiones FOIA —
+      <b>OVNIs</b>, <b>MK-Ultra</b>, <b>JFK</b>, <b>RFK</b>, <b>MLK</b>, <b>Papeles del Pentágono</b>, <b>Stargate</b> y más.</p>
   </div>
-  <div class="nav-right">
-    <span id="update-status"><span class="status-dot off"></span>Cargando…</span>
-    <button class="btn" onclick="traducirTitulos()" id="btn-traducir" style="display:none"><span data-icon="globe"></span>Traducir títulos</button>
-    <button class="btn" onclick="analizarPendientes()" id="btn-ia"><span data-icon="sparkles"></span>Analizar pendientes</button>
-    <button class="btn btn-success" onclick="triggerUpdate()" id="btn-update"><span data-icon="refresh"></span>Actualizar ahora</button>
-    <a class="btn btn-primary" href="/api/exportar" download><span data-icon="download"></span>Exportar JSON</a>
+  <div class="page-head-actions">
+    <button class="btn" id="btn-traducir" type="button" hidden><span data-icon="globe"></span>Traducir títulos</button>
+    <button class="btn btn-violet" id="btn-ia" type="button" hidden><span data-icon="sparkles"></span>Resumir pendientes</button>
+    <button class="btn btn-outline" id="btn-update" type="button"><span data-icon="refresh"></span>Actualizar fuentes</button>
+    <a class="btn btn-ghost" href="/api/exportar" download><span data-icon="download"></span>Exportar JSON</a>
   </div>
-</nav>
+</header>
 
-<div class="container">
+<div id="ia-banner" class="banner" hidden>
+  <span data-icon="sparkles" data-icon-size="18"></span>
+  <span><strong>Resúmenes con IA no activados.</strong> <span id="ia-banner-msg"></span></span>
+</div>
 
-  <header class="hero">
-    <span class="stamp">Desclasificado</span>
-    <span class="hero-kicker">Archivo de inteligencia · 2026</span>
-    <h1 class="hero-title">Archivos Clasificados</h1>
-    <p class="hero-sub">Documentos desclasificados oficiales — <b>OVNIs</b>, <b>MK-Ultra</b>, <b>JFK</b>, <b>Stargate</b>, <b>Northwoods</b> y <b>Paperclip</b>.</p>
-  </header>
+<div class="task-bar" id="task-bar" hidden aria-live="polite">
+  <span class="task-label"><span class="spinner" aria-hidden="true"></span><span id="task-text"></span></span>
+  <span class="progress" id="task-progress"><span></span></span>
+  <span class="task-meta" id="task-meta"></span>
+</div>
 
-  <div id="ia-banner" class="banner" style="display:none">
-    <span class="icon" data-icon="sparkles" data-icon-size="18"></span>
-    <span><strong>Resúmenes con IA no activados.</strong> Configura un motor en <code>config.py</code> (Gemini, LM Studio u OpenRouter).</span>
+<section class="stats-grid" aria-label="Resumen del archivo">
+  <div class="stat-card"><div class="lbl"><span data-icon="folder"></span>Expedientes</div><div class="num" id="stat-total">—</div><div class="sub" id="stat-total-sub">&nbsp;</div></div>
+  <div class="stat-card"><div class="lbl"><span data-icon="plus-circle"></span>Nuevos hoy</div><div class="num c-accent" id="stat-nuevos">—</div><div class="sub">ingresados en las últimas horas</div></div>
+  <div class="stat-card"><div class="lbl"><span data-icon="sparkles"></span>Resumidos con IA</div><div class="num" id="stat-ia">—</div><div class="meter" aria-hidden="true"><span id="stat-ia-meter" style="width:0"></span></div><div class="sub" id="stat-ia-sub">&nbsp;</div></div>
+  <div class="stat-card"><div class="lbl"><span data-icon="file-text"></span>Informes PDF</div><div class="num" id="stat-informes">—</div><div class="meter" aria-hidden="true"><span id="stat-informes-meter" style="width:0"></span></div><div class="sub" id="stat-informes-sub">&nbsp;</div></div>
+  <div class="stat-card"><div class="lbl"><span data-icon="database"></span>Fuentes</div><div class="num" id="stat-fuentes">—</div><div class="sub">organismos y archivos distintos</div></div>
+</section>
+
+<section class="charts-row" aria-label="Distribución del archivo">
+  <div class="chart-card"><h3><span data-icon="bar-chart"></span>Por categoría <span class="hint">pulsa para filtrar</span></h3><div id="chart-categorias"></div></div>
+  <div class="chart-card"><h3><span data-icon="layers"></span>Por fuente <span class="hint">pulsa para filtrar</span></h3><div id="chart-fuentes"></div></div>
+  <div class="chart-card"><h3><span data-icon="clock"></span>Por década</h3><div id="chart-decadas"></div></div>
+</section>
+
+<section class="filters" aria-label="Filtros">
+  <div class="filter-group search">
+    <label for="search-input">Búsqueda libre</label>
+    <div class="search-wrap">
+      <span data-icon="search" data-icon-size="15"></span>
+      <input type="search" id="search-input" data-search placeholder="Título, resumen, organismo… (sin importar tildes)" autocomplete="off">
+      <kbd aria-hidden="true">/</kbd>
+    </div>
   </div>
-
-  <div class="stats-grid" id="stats-grid">
-    <div class="stat-card"><div class="num" id="stat-total">—</div><div class="lbl"><span data-icon="folder"></span>Expedientes totales</div></div>
-    <div class="stat-card"><div class="num c-danger" id="stat-nuevos">—</div><div class="lbl"><span data-icon="plus-circle"></span>Nuevos hoy</div></div>
-    <div class="stat-card"><div class="num c-alto" id="stat-oficial">—</div><div class="lbl"><span data-icon="check-circle"></span>Verificados oficiales</div></div>
-    <div class="stat-card"><div class="num c-medio" id="stat-posible">—</div><div class="lbl"><span data-icon="alert-triangle"></span>Posibles (sin verificar)</div></div>
-    <div class="stat-card"><div class="num" id="stat-paises">—</div><div class="lbl"><span data-icon="globe"></span>Países</div></div>
+  <div class="filter-group"><label for="f-fuente">Fuente</label><select id="f-fuente"><option value="">Todas</option></select></div>
+  <div class="filter-group"><label for="f-categoria">Categoría</label><select id="f-categoria"><option value="">Todas</option></select></div>
+  <div class="filter-group"><label for="f-pais">País</label><select id="f-pais"><option value="">Todos</option></select></div>
+  <div class="filter-group"><label for="f-confianza">Confianza</label><select id="f-confianza">
+    <option value="">Todas</option><option value="ALTO">Alta</option><option value="MEDIO">Media</option><option value="BAJO">Baja</option>
+  </select></div>
+  <div class="filter-group"><label for="f-ia">Estado del resumen</label><select id="f-ia">
+    <option value="">Todos</option><option value="analizado">Resumido</option><option value="pendiente">Pendiente</option><option value="sin_texto">Sin texto legible</option>
+  </select></div>
+  <div class="filters-row2">
+    <div class="filter-group"><label for="f-desde">Fecha desde</label><input type="date" id="f-desde"></div>
+    <div class="filter-group"><label for="f-hasta">Fecha hasta</label><input type="date" id="f-hasta"></div>
+    <button class="btn" id="btn-limpiar" type="button"><span data-icon="x"></span>Limpiar filtros</button>
   </div>
+</section>
 
-  <div class="charts-row">
-    <div class="chart-card"><h3><span data-icon="bar-chart"></span>Por categoría</h3><div id="chart-categorias"></div></div>
-    <div class="chart-card"><h3><span data-icon="globe"></span>Por país</h3><div id="chart-paises"></div></div>
-  </div>
+<div class="results-bar">
+  <span id="results-count" aria-live="polite">Cargando…</span>
+  <label class="sort">Orden
+    <select id="f-orden">
+      <option value="fecha_desc">Fecha del documento (reciente)</option>
+      <option value="fecha_asc">Fecha del documento (antigua)</option>
+      <option value="ingreso_desc">Añadidos recientemente</option>
+    </select>
+  </label>
+</div>
+<div id="docs-container"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+<nav class="pagination" id="pagination" aria-label="Paginación"></nav>
 
-  <div class="filters">
-    <div class="filter-group"><label>Búsqueda libre</label><input type="text" id="search-input" placeholder="Buscar…" oninput="debounceLoad()"></div>
-    <div class="filter-group"><label>Categoría</label><select id="filter-categoria" onchange="loadDocs()">
-      <option value="">Todas</option>
-      <option>Seguridad y defensa</option><option>Inteligencia y espionaje</option>
-      <option>Política exterior y diplomacia</option><option>Derechos humanos</option>
-      <option>Economía y sanciones</option><option>Ciencia y tecnología militar</option>
-      <option>Corrupción y gobernanza</option><option>Energía y recursos</option><option>Otras</option>
-    </select></div>
-    <div class="filter-group"><label>País</label><select id="filter-pais" onchange="loadDocs()">
-      <option value="">Todos</option><option>EE. UU.</option><option>España</option>
-      <option>Reino Unido</option><option>Argentina</option>
-    </select></div>
-    <div class="filter-group"><label>Confianza</label><select id="filter-confianza" onchange="loadDocs()">
-      <option value="">Todas</option><option value="ALTO">Alta</option>
-      <option value="MEDIO">Media</option><option value="BAJO">Baja</option>
-    </select></div>
-    <div class="filter-group"><label>Verificación</label><select id="filter-verificado" onchange="loadDocs()">
-      <option value="">Todas</option><option value="Oficial">Oficial</option>
-      <option value="Posible">Posible (sin verificar)</option>
-    </select></div>
-    <div class="filter-group"><label>Desde</label><input type="date" id="filter-desde" onchange="loadDocs()"></div>
-    <div class="filter-group"><label>Hasta</label><input type="date" id="filter-hasta" onchange="loadDocs()"></div>
-    <div class="filter-actions"><button class="btn" onclick="clearFilters()"><span data-icon="x"></span>Limpiar</button></div>
-  </div>
-
-  <div class="results-bar">
-    <span id="results-count">Cargando…</span>
-    <span style="color:var(--muted); font-size:12px;">Más recientes primero</span>
-  </div>
-  <div id="docs-container"><div class="loader"><span class="spinner"></span>Accediendo a los archivos clasificados…</div></div>
-  <div class="pagination" id="pagination"></div>
-
-  <div class="log-section">
-    <h2><span data-icon="radio"></span>Registro de vigilancia · actualizaciones automáticas</h2>
+<details class="log-section" id="log-section">
+  <summary><span data-icon="radio"></span>Registro de vigilancia <span id="log-resumen" style="text-transform:none;letter-spacing:0;font-family:var(--sans);font-weight:400;color:var(--muted)"></span><span class="chev" data-icon="chevron-right"></span></summary>
+  <div class="log-wrap">
     <table class="log-table">
-      <thead><tr><th>Fecha</th><th>Fuente</th><th>Enc.</th><th>Nuevos</th><th>Estado</th><th>Detalle</th></tr></thead>
-      <tbody id="log-tbody"><tr><td colspan="6" style="color:var(--muted); text-align:center; padding:20px;">Cargando…</td></tr></tbody>
+      <thead><tr><th>Fecha</th><th>Fuente</th><th>En la fuente</th><th>Nuevos</th><th>Estado</th><th>Detalle</th></tr></thead>
+      <tbody id="log-tbody"><tr><td colspan="6" style="text-align:center;padding:18px">Cargando…</td></tr></tbody>
     </table>
   </div>
+</details>
+{% endblock %}
 
-</div>
-<div class="toast" id="toast"></div>
-
-<script src="/static/js/icons.js"></script>
+{% block scripts %}
 <script>
 const PAGE_SIZE = 10;
-let currentPage = 1;
-let totalDocs = 0;
+const NIVEL_TXT = { ALTO: 'alta', MEDIO: 'media', BAJO: 'baja' };
+const FILTROS = {            // parámetro de la API/URL -> id del control
+  busqueda: 'search-input', fuente: 'f-fuente', categoria: 'f-categoria', pais: 'f-pais',
+  confianza: 'f-confianza', ia: 'f-ia', fecha_desde: 'f-desde', fecha_hasta: 'f-hasta', orden: 'f-orden',
+};
+const st = { page: 1, total: 0, abiertos: new Set(), docFijo: null, cargaInicial: true, stats: null };
 let debounceTimer = null;
-let updatePolling = false;
+const $ = id => document.getElementById(id);
 
-function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => loadDocs(1), 350); }
-
-function currentParams() {
-  const params = new URLSearchParams();
-  const v = id => document.getElementById(id).value;
-  const s = v('search-input').trim();
-  if (s) params.set('busqueda', s);
-  if (v('filter-categoria')) params.set('categoria', v('filter-categoria'));
-  if (v('filter-pais')) params.set('pais', v('filter-pais'));
-  if (v('filter-confianza')) params.set('confianza', v('filter-confianza'));
-  if (v('filter-verificado')) params.set('verificado', v('filter-verificado'));
-  if (v('filter-desde')) params.set('fecha_desde', v('filter-desde'));
-  if (v('filter-hasta')) params.set('fecha_hasta', v('filter-hasta'));
-  return params;
+/* ---------------- Filtros y URL ---------------- */
+function paramsFiltros() {
+  const p = new URLSearchParams();
+  for (const [k, id] of Object.entries(FILTROS)) {
+    const v = ($(id).value || '').trim();
+    if (v && !(k === 'orden' && v === 'fecha_desc')) p.set(k, v);
+  }
+  return p;
 }
 
-async function loadDocs(page) {
-  currentPage = page || currentPage || 1;
-  const params = currentParams();
-  params.set('page', currentPage);
+function sincronizarURL() {
+  const p = paramsFiltros();
+  if (st.page > 1) p.set('page', st.page);
+  if (st.docFijo) p.set('doc', st.docFijo);
+  escribirParams(p);
+}
+
+function aplicarURL() {
+  const p = leerParams();
+  for (const [k, id] of Object.entries(FILTROS)) {
+    const v = p.get(k);
+    if (!v) continue;
+    const el = $(id);
+    // Los <select> de fuente/categoría/país aún no tienen opciones (llegan de /api/filtros):
+    // sin esta opción provisional, el navegador descartaría el valor de la URL.
+    if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === v)) {
+      el.insertAdjacentHTML('beforeend', `<option value="${escHtml(v)}">${escHtml(v)}</option>`);
+    }
+    el.value = v;
+  }
+  st.page = Math.max(1, parseInt(p.get('page') || '1', 10) || 1);
+  st.docFijo = p.get('doc') || null;
+}
+
+function poblarSelect(id, opciones, vacio) {
+  const sel = $(id), actual = sel.value || leerParams().get(Object.keys(FILTROS).find(k => FILTROS[k] === id)) || '';
+  sel.innerHTML = `<option value="">${vacio}</option>` + opciones.map(o =>
+    `<option value="${escHtml(o.valor)}">${escHtml(o.valor)} (${o.n})</option>`).join('');
+  // Si el valor de la URL ya no existe (p. ej. fuente vacía), se añade para no perder el filtro.
+  if (actual && !opciones.some(o => o.valor === actual)) sel.insertAdjacentHTML('beforeend', `<option value="${escHtml(actual)}">${escHtml(actual)}</option>`);
+  sel.value = actual;
+}
+
+async function loadFiltros() {
+  const f = await api('/api/filtros');
+  if (!f || f.ok === false) return;
+  poblarSelect('f-fuente', f.fuentes, 'Todas');
+  poblarSelect('f-categoria', f.categorias, 'Todas');
+  poblarSelect('f-pais', f.paises, 'Todos');
+}
+
+function setFiltro(param, valor) {
+  $(FILTROS[param]).value = valor;
+  st.docFijo = null;
+  loadDocs(1, { scroll: true });
+}
+
+/* ---------------- Documentos ---------------- */
+async function loadDocs(page, opts) {
+  opts = opts || {};
+  if (page) st.page = page;
+  const params = paramsFiltros();
+  if (st.docFijo) params.set('id', st.docFijo);
+  params.set('page', st.page);
   params.set('page_size', PAGE_SIZE);
+  sincronizarURL();
 
-  const c = document.getElementById('docs-container');
-  c.innerHTML = `<div class="loader">${iconSvg('refresh', {size:18})}Cargando…</div>`;
-  try {
-    const r = await fetch('/api/documentos?' + params.toString());
-    const data = await r.json();
-    totalDocs = data.total;
-    renderPage(data.items);
-  } catch(e) {
-    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('alert-triangle', {size:40})}</div><p>Error al cargar.</p></div>`;
+  const c = $('docs-container');
+  if (!st.cargaInicial) c.classList.add('is-refreshing');   // mantiene lo anterior, sin parpadeo
+  const data = await api('/api/documentos?' + params.toString());
+  c.classList.remove('is-refreshing');
+  st.cargaInicial = false;
+  if (!data || data.ok === false || !Array.isArray(data.items)) {
+    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('alert-triangle', {size: 36})}</div><p>No se pudieron cargar los expedientes. ${escHtml((data && data.error) || '')}</p></div>`;
+    return;
   }
+  st.total = data.total;
+  const totalPaginas = Math.max(1, Math.ceil(st.total / PAGE_SIZE));
+  if (st.page > totalPaginas && st.total > 0) return loadDocs(totalPaginas, opts);
+
+  renderDocs(data.items);
+  renderResultados(totalPaginas);
+  renderPagination($('pagination'), st.page, totalPaginas, p => loadDocs(p, { scroll: true }));
+  if (st.docFijo && data.items.length === 1) abrirCard(data.items[0].id, true);
+  if (opts.scroll) document.querySelector('.results-bar').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function renderPage(items) {
-  const totalPages = Math.max(1, Math.ceil(totalDocs / PAGE_SIZE));
-  const start = (currentPage - 1) * PAGE_SIZE;
-  const c = document.getElementById('docs-container');
-  if (!items.length) {
-    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('box', {size:40})}</div><p>No se encontraron expedientes.</p></div>`;
-  } else {
-    c.innerHTML = items.map((d, i) => renderCard(d, start + i)).join('');
+function renderResultados(totalPaginas) {
+  const el = $('results-count');
+  if (st.docFijo) {
+    el.innerHTML = `<span class="chip-row"><span class="chip">Expediente ${escHtml(st.docFijo)} <button type="button" id="quitar-doc" aria-label="Ver todos los expedientes">${iconSvg('x', {size: 11})}</button></span></span>`;
+    $('quitar-doc').onclick = () => { st.docFijo = null; loadDocs(1); };
+    return;
   }
-  document.getElementById('results-count').innerHTML =
-    `<strong>${totalDocs}</strong> expediente${totalDocs!==1?'s':''} · página <strong>${currentPage}</strong> de <strong>${totalPages}</strong>`;
-  renderPagination(totalPages);
-  window.scrollTo({top:0, behavior:'smooth'});
+  el.innerHTML = `<strong>${fmtNum(st.total)}</strong> ${st.total === 1 ? 'expediente' : 'expedientes'}`
+    + (totalPaginas > 1 ? ` · página <strong>${st.page}</strong> de <strong>${totalPaginas}</strong>` : '');
 }
 
-function renderPagination(totalPages) {
-  const p = document.getElementById('pagination');
-  if (totalPages <= 1) { p.innerHTML = ''; return; }
-  p.innerHTML = `
-    <button class="btn" onclick="loadDocs(1)" ${currentPage===1?'disabled':''}>« primera</button>
-    <button class="btn" onclick="loadDocs(${currentPage-1})" ${currentPage===1?'disabled':''}>‹ anterior</button>
-    <span class="page-info">${currentPage} / ${totalPages}</span>
-    <button class="btn" onclick="loadDocs(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>siguiente ›</button>
-    <button class="btn" onclick="loadDocs(${totalPages})" ${currentPage===totalPages?'disabled':''}>última »</button>`;
+function estadoIA(d) {
+  const a = d.analizado_ia || '';
+  if (a === 'curado') return 'curado';
+  if (a === 'sin_texto') return 'sin_texto';
+  return a ? 'ia' : 'pendiente';
 }
 
-function isToday(iso) {
+function fuenteDe(d) { return (d.organismo || [])[0] || ''; }
+
+/* "FBI Vault — Ernst Zundel Parte 02" -> "Ernst Zundel Parte 02" (la fuente ya va encima). */
+function tituloLimpio(d) {
+  const src = fuenteDe(d);
+  let t = d.titulo || '';
+  if (src && t.startsWith(src + ' — ')) t = t.slice(src.length + 3);
+  if (/^[\d\s\-–.]+$/.test(t)) t = 'Registro ' + t;
+  return t || d.titulo || d.id;
+}
+
+function descripcionFuente(d) {
+  const r = (d.resumen_ejecutivo || '').trim();
+  return r && !r.startsWith('[Pendiente') ? r : '';
+}
+
+function esHoy(iso) {
   if (!iso) return false;
-  const hoy = new Date().toISOString().slice(0,10);
-  return iso.slice(0,10) === hoy;
+  const d = new Date(iso), h = new Date();
+  return d.getFullYear() === h.getFullYear() && d.getMonth() === h.getMonth() && d.getDate() === h.getDate();
 }
 
-function renderCard(d, i) {
-  const cats = (d.categorias || []).map(c => `<span class="tag">${escHtml(c)}</span>`).join('');
+function badgeIA(estado) {
+  if (estado === 'ia') return `<span class="badge badge-ia">${iconSvg('sparkles', {size: 11})}IA</span>`;
+  if (estado === 'curado') return `<span class="badge badge-curado">${iconSvg('check-circle', {size: 11})}Curado</span>`;
+  if (estado === 'sin_texto') return `<span class="badge" title="El documento no tiene texto legible">${iconSvg('scan', {size: 11})}Sin texto</span>`;
+  return `<span class="badge" title="Aún no tiene resumen">${iconSvg('clock', {size: 11})}Pendiente</span>`;
+}
+
+function renderDocs(items) {
+  const c = $('docs-container');
+  if (!items.length) {
+    c.innerHTML = `<div class="empty"><div class="empty-icon">${iconSvg('box', {size: 36})}</div><p>No hay expedientes con estos filtros.</p></div>`;
+    return;
+  }
+  c.innerHTML = items.map(renderCard).join('');
+}
+
+function renderCard(d) {
+  const est = estadoIA(d);
   const nivel = ((d.nivel_confianza || '').toUpperCase().match(/ALTO|MEDIO|BAJO/) || ['MEDIO'])[0];
-  const puntos = (d.puntos_clave || []).map(p => `<li>${escHtml(p)}</li>`).join('');
-  const orgs = (d.organismo || []).map(o => `<span class="org-badge">${escHtml(o)}</span>`).join('');
-  const verif = d.verificado || '';
-  const verifClass = verif === 'Oficial' ? 'verif-Oficial' : 'verif-Posible';
-  const verifBadge = verif ? `<span class="verif-badge ${verifClass}">${iconSvg(verif==='Oficial'?'check-circle':'alert-triangle',{size:12})} ${escHtml(verif)}</span>` : '';
-  const ribbon = isToday(d.fecha_ingreso) ? '<div class="nuevo-ribbon">NUEVO</div>' : '';
-  const iaBadge = d.analizado_ia === 'gemini' ? `<span class="ia-badge">${iconSvg('sparkles',{size:12})} IA</span>` : '';
+  const src = fuenteDe(d);
+  const cats = (d.categorias || []).slice(0, 3).map(c => `<span class="tag">${escHtml(c)}</span>`).join('');
+  const abierto = st.abiertos.has(d.id);
+  const bodyId = 'body-' + d.id;
+  const desc = descripcionFuente(d);
+
+  let resumen = '';
+  if (est === 'pendiente') {
+    resumen = `<div class="notice">${iconSvg('clock', {size: 15})}<span><strong>Pendiente de resumen.</strong> El archivo lo resumirá solo en segundo plano; también puedes pedirlo ahora.</span></div>`
+      + (desc ? `<div class="section-title">Descripción de la fuente <span class="aside">· original, sin procesar</span></div><div class="resumen">${escHtml(desc)}</div>` : '');
+  } else if (est === 'sin_texto') {
+    resumen = `<div class="notice warn">${iconSvg('scan', {size: 15})}<span><strong>No se pudo leer el contenido.</strong> Es un PDF escaneado sin capa de texto o la fuente no dejó descargarlo. Ábrelo desde el original; si activas un modelo con visión (<code>OPENROUTER_VISION_MODEL</code>) se puede reintentar.</span></div>`;
+  } else {
+    resumen = `<div class="section-title">Resumen ejecutivo ${est === 'ia' ? '<span class="aside">· generado por IA</span>' : ''}</div>
+      <div class="resumen">${escHtml(d.resumen_ejecutivo || '—')}</div>`;
+  }
+  const puntos = est === 'pendiente' ? [] : (d.puntos_clave || []).filter(Boolean);
+  const implic = est === 'pendiente' ? '' : (d.implicaciones || '').trim();
+  const accionIA = est === 'pendiente' ? 'Resumir con IA' : (est === 'sin_texto' ? 'Reintentar lectura' : 'Volver a resumir');
+  const orgs = (d.organismo || []).map(o => `<span class="tag">${escHtml(o)}</span>`).join('');
+  const meta = [
+    ['Organismo(s)', `<div class="org-list">${orgs || '—'}</div>`],
+    ['Tipo', escHtml(d.tipo_documento || '—')],
+    ['Clasificación original', escHtml(d.clasificacion_original || '—')],
+    ['Estado', escHtml(d.estado_desclasificacion || '—')],
+    ['Idioma original', escHtml(d.idioma_original || '—')],
+    ['Verificación', escHtml(`${d.verificado || '—'} · fiabilidad ${(d.fuente_fiabilidad || '—').toLowerCase()}`)],
+    ['URL fuente', d.url_fuente ? `<a href="${escUrl(d.url_fuente)}" target="_blank" rel="noopener noreferrer">${escHtml(d.url_fuente)}</a>` : '—'],
+    ['URL noticia', d.url_noticia && d.url_noticia !== d.url_fuente ? `<a href="${escUrl(d.url_noticia)}" target="_blank" rel="noopener noreferrer">${escHtml(d.url_noticia)}</a>` : '—'],
+    ['Fecha del documento', escHtml(fmtFechaDoc(d.fecha_documento))],
+    ['Ingreso en el archivo', escHtml(fmtFechaHora(d.fecha_ingreso))],
+  ].map(([k, v]) => `<div class="meta-item"><div class="meta-k">${k}</div><div class="meta-v">${v}</div></div>`).join('');
+
   return `
-  <div class="doc-card" id="card-${i}">
-    ${ribbon}
-    <div class="doc-header" role="button" tabindex="0" aria-expanded="false" aria-controls="body-${i}"
-         onclick="toggleCard(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleCard(${i})}">
+  <article class="doc-card ${abierto ? 'open' : ''}" data-id="${escHtml(d.id)}">
+    <div class="doc-header" role="button" tabindex="0" aria-expanded="${abierto}" aria-controls="${escHtml(bodyId)}">
       <div class="doc-meta-left">
-        <div class="doc-id">▣ EXPEDIENTE ${escHtml(d.id)}</div>
-        <div class="doc-titulo">${escHtml(d.titulo)}</div>
+        <div class="doc-kicker">${src ? `<span class="src">${escHtml(src)}</span><span aria-hidden="true">·</span>` : ''}<span>${escHtml(d.id)}</span></div>
+        <div class="doc-titulo">${escHtml(tituloLimpio(d))}</div>
         <div class="doc-tags">
-          <span class="tag tag-fecha">${iconSvg('calendar',{size:11})} ${escHtml(d.fecha_documento||'—')}</span>
-          <span class="tag tag-pais">${iconSvg('globe',{size:11})} ${escHtml(d.pais||'—')}</span>
-          <span class="tag tag-tipo">${iconSvg('file-text',{size:11})} ${escHtml(d.num_documentos||'—')}</span>
+          <span class="tag ${d.fecha_documento ? '' : 'muted'}" title="Fecha del documento">${iconSvg('calendar', {size: 11})}${escHtml(d.fecha_documento ? fmtFechaDoc(d.fecha_documento) : 'Sin fecha')}</span>
+          ${d.pais ? `<span class="tag">${iconSvg('globe', {size: 11})}${escHtml(d.pais)}</span>` : ''}
           ${cats}
         </div>
       </div>
       <div class="doc-meta-right">
-        ${iaBadge}${verifBadge}
-        <span class="confidence-badge conf-${nivel}">● ${nivel}</span>
-        <span class="estado-badge">${escHtml((d.estado_desclasificacion||'').substring(0,60))}${(d.estado_desclasificacion||'').length>60?'…':''}</span>
+        ${esHoy(d.fecha_ingreso) ? '<span class="badge badge-nuevo">Nuevo</span>' : ''}
+        ${badgeIA(est)}
+        <span class="badge conf-${nivel}" title="Nivel de confianza">Confianza ${NIVEL_TXT[nivel]}</span>
       </div>
-      <span class="chevron">›</span>
+      <span class="chevron" aria-hidden="true">${iconSvg('chevron-right', {size: 18})}</span>
     </div>
-    <div class="doc-body" id="body-${i}">
-      <div class="section-title">Resumen ejecutivo ${d.analizado_ia==='gemini'?'<span style="color:#bc8cff;font-weight:400;text-transform:none;letter-spacing:0">· generado por IA</span>':''}</div>
-      <div class="resumen">${escHtml(d.resumen_ejecutivo || '—')}</div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn btn-ia-card" onclick="event.stopPropagation(); analizarUno('${d.id}', this)">${iconSvg('sparkles',{size:14})} ${d.analizado_ia==='gemini'?'Volver a resumir con IA':'Resumir con IA'}</button>
-        <button class="btn btn-informe" onclick="event.stopPropagation(); generarInforme('${d.id}', this)">${iconSvg('download',{size:14})} Descargar informe PDF</button>
+    <div class="doc-body" id="${escHtml(bodyId)}">
+      <div class="doc-actions">
+        ${d.url_fuente ? `<a class="btn btn-outline btn-sm" href="${escUrl(d.url_fuente)}" target="_blank" rel="noopener noreferrer">${iconSvg('external-link', {size: 14})}Abrir original</a>` : ''}
+        <button class="btn btn-violet btn-sm" type="button" data-action="analizar">${iconSvg('sparkles', {size: 14})}${accionIA}</button>
+        <button class="btn btn-sm" type="button" data-action="informe" data-hay="${d.tiene_informe ? 1 : 0}">${iconSvg(d.tiene_informe ? 'download' : 'file-text', {size: 14})}${d.tiene_informe ? 'Descargar informe PDF' : 'Generar informe PDF'}</button>
       </div>
-      <div class="section-title">Puntos clave</div>
-      <ul class="puntos">${puntos || '<li>No disponible</li>'}</ul>
-      <div class="section-title">Implicaciones</div>
-      <div class="implicaciones">${escHtml(d.implicaciones || '—')}</div>
+      ${resumen}
+      ${puntos.length ? `<div class="section-title">Puntos clave</div><ul class="puntos">${puntos.map(p => `<li>${escHtml(p)}</li>`).join('')}</ul>` : ''}
+      ${implic ? `<div class="section-title">Implicaciones</div><div class="implicaciones">${escHtml(implic)}</div>` : ''}
       <div class="section-title">Metadatos y trazabilidad</div>
-      <div class="meta-grid">
-        <div class="meta-item"><div class="meta-k">Organismo(s)</div><div class="meta-v"><div class="org-list">${orgs||'—'}</div></div></div>
-        <div class="meta-item"><div class="meta-k">Tipo</div><div class="meta-v">${escHtml(d.tipo_documento||'—')}</div></div>
-        <div class="meta-item"><div class="meta-k">Clasificación</div><div class="meta-v">${escHtml(d.clasificacion_original||'—')}</div></div>
-        <div class="meta-item"><div class="meta-k">Idioma original</div><div class="meta-v">${escHtml(d.idioma_original||'—')}</div></div>
-        <div class="meta-item"><div class="meta-k">Verificación</div><div class="meta-v">${escHtml(d.verificado||'—')}</div></div>
-        <div class="meta-item"><div class="meta-k">Fiabilidad fuente</div><div class="meta-v">${escHtml(d.fuente_fiabilidad||'—')}</div></div>
-        <div class="meta-item"><div class="meta-k">URL fuente</div><div class="meta-v"><a href="${escAttr(d.url_fuente)}" target="_blank" rel="noopener">${escHtml(d.url_fuente||'—')}</a></div></div>
-        <div class="meta-item"><div class="meta-k">URL noticia</div><div class="meta-v">${d.url_noticia?`<a href="${escAttr(d.url_noticia)}" target="_blank" rel="noopener">${escHtml(d.url_noticia)}</a>`:'—'}</div></div>
-        <div class="meta-item"><div class="meta-k">Fecha acceso</div><div class="meta-v">${escHtml(d.fecha_acceso||'—')}</div></div>
-        <div class="meta-item"><div class="meta-k">Ingreso BD</div><div class="meta-v">${escHtml((d.fecha_ingreso||'—').replace('T',' ').split('.')[0])}</div></div>
-      </div>
-      <div class="confianza-note" style="margin-top:12px"><strong>Confianza ${escHtml(d.nivel_confianza||'')}:</strong> ${escHtml(d.razon_confianza||'—')}</div>
-      <div class="confianza-note" style="margin-top:6px">${escHtml(d.verificacion_autenticidad||'')}</div>
+      <div class="meta-grid">${meta}</div>
+      ${d.razon_confianza ? `<div class="confianza-note"><strong>Confianza ${NIVEL_TXT[nivel]}:</strong> ${escHtml(d.razon_confianza)}</div>` : ''}
+      ${d.verificacion_autenticidad ? `<div class="confianza-note">${escHtml(d.verificacion_autenticidad)}</div>` : ''}
     </div>
-  </div>`;
+  </article>`;
 }
 
-function toggleCard(i) {
-  const card = document.getElementById('card-'+i);
-  const header = card.querySelector('.doc-header');
-  const open = card.classList.toggle('open');
-  header.setAttribute('aria-expanded', open ? 'true' : 'false');
+function abrirCard(id, abrir) {
+  const card = document.querySelector(`.doc-card[data-id="${CSS.escape(id)}"]`);
+  if (!card) return;
+  const open = abrir === undefined ? !card.classList.contains('open') : abrir;
+  card.classList.toggle('open', open);
+  card.querySelector('.doc-header').setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) st.abiertos.add(id); else st.abiertos.delete(id);
 }
 
+$('docs-container').addEventListener('click', e => {
+  const card = e.target.closest('.doc-card');
+  if (!card) return;
+  const accion = e.target.closest('[data-action]');
+  if (accion) {
+    if (accion.dataset.action === 'analizar') analizarUno(card.dataset.id, accion);
+    if (accion.dataset.action === 'informe') generarInforme(card.dataset.id, accion);
+    return;
+  }
+  if (e.target.closest('a')) return;
+  if (e.target.closest('.doc-header')) abrirCard(card.dataset.id);
+});
+$('docs-container').addEventListener('keydown', e => {
+  const h = e.target.closest('.doc-header');
+  if (h && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); abrirCard(h.closest('.doc-card').dataset.id); }
+});
+
+/* ---------------- Estadísticas y gráficas ---------------- */
 async function loadStats() {
-  try {
-    const s = await (await fetch('/api/stats')).json();
-    document.getElementById('stat-total').textContent = s.total;
-    document.getElementById('stat-nuevos').textContent = s.nuevos_hoy || 0;
-    document.getElementById('stat-oficial').textContent = (s.por_verificacion && s.por_verificacion['Oficial']) || 0;
-    document.getElementById('stat-posible').textContent = (s.por_verificacion && s.por_verificacion['Posible']) || 0;
-    document.getElementById('stat-paises').textContent = s.por_pais.length;
-    const maxCat = Math.max(...s.por_categoria.map(c=>c[1]), 1);
-    const colors = ['#d8a24a','#54b98a','#5e9cd6','#9b8cff','#e0655e','#4fb0a5','#e9b964','#cf8a9e'];
-    document.getElementById('chart-categorias').innerHTML = s.por_categoria.slice(0,8).map(([cat,n],i)=>`
-      <div class="bar-row"><div class="bar-label" title="${escHtml(cat)}">${escHtml(cat)}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(n/maxCat*100)}%;background:${colors[i%colors.length]}"></div></div>
-      <div class="bar-val">${n}</div></div>`).join('');
-    const maxP = Math.max(...s.por_pais.map(p=>p.n), 1);
-    document.getElementById('chart-paises').innerHTML = s.por_pais.map((p,i)=>`
-      <div class="bar-row"><div class="bar-label">${escHtml(p.pais)}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(p.n/maxP*100)}%;background:${colors[i%colors.length]}"></div></div>
-      <div class="bar-val">${p.n}</div></div>`).join('');
-  } catch(e) {}
+  const s = await api('/api/stats');
+  if (!s || s.ok === false) return;
+  st.stats = s;
+  const total = s.total || 0;
+  $('stat-total').textContent = fmtNum(total);
+  $('stat-total-sub').textContent = `${fmtNum(s.titulos_pendientes)} títulos por traducir`;
+  $('stat-nuevos').textContent = fmtNum(s.nuevos_hoy || 0);
+  const resumidos = (s.analizados_ia || 0) + (s.curados || 0);
+  $('stat-ia').innerHTML = `${fmtNum(resumidos)}<small>/ ${fmtNum(total)}</small>`;
+  $('stat-ia-meter').style.width = total ? (resumidos / total * 100) + '%' : '0';
+  $('stat-ia-sub').textContent = `${fmtNum(s.pendientes_ia)} pendientes · ${fmtNum(s.sin_texto)} sin texto legible`;
+  $('stat-informes').innerHTML = `${fmtNum(s.informes)}<small>/ ${fmtNum(total)}</small>`;
+  $('stat-informes-meter').style.width = total ? (s.informes / total * 100) + '%' : '0';
+  $('stat-informes-sub').textContent = total - s.informes > 0 ? `${fmtNum(total - s.informes)} por generar en segundo plano` : 'todos generados';
+  $('stat-fuentes').textContent = fmtNum(s.num_fuentes || 0);
+
+  renderBarList($('chart-categorias'), (s.por_categoria || []).slice(0, 8).map(([c, n]) => ({ label: c, n })),
+    { total, onClick: v => setFiltro('categoria', v) });
+  renderBarList($('chart-fuentes'), (s.por_fuente || []).slice(0, 6).map(f => ({ label: f.fuente, n: f.n })),
+    { total, clase: 'apilada', onClick: v => setFiltro('fuente', v) });   // nombres largos: etiqueta encima
+  renderDecadas(s.por_decada || [], total);
 }
 
-async function loadLog() {
-  try {
-    const rows = await (await fetch('/api/actualizaciones')).json();
-    const tbody = document.getElementById('log-tbody');
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px;">Sin actualizaciones aún.</td></tr>'; return; }
-    tbody.innerHTML = rows.map(r => `
-      <tr><td>${escHtml((r.timestamp||'').replace('T',' ').split('.')[0])}</td><td>${escHtml(r.fuente||'—')}</td>
-      <td>${r.docs_encontrados??'—'}</td><td>${r.docs_nuevos??'—'}</td>
-      <td class="${r.estado==='OK'?'status-ok':'status-error'}">${escHtml(r.estado||'')}</td>
-      <td style="color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis">${escHtml(r.detalle||'')}</td></tr>`).join('');
-    const dotClass = rows[0].estado === 'OK' ? 'ok' : 'off';
-    document.getElementById('update-status').innerHTML =
-      `<span class="status-dot ${dotClass}"></span>Última: ` + escHtml((rows[0].timestamp||'').replace('T',' ').split('.')[0]);
-  } catch(e) {}
-}
-
-async function checkActualizarEstado() {
-  try {
-    const e = await (await fetch('/api/actualizar/estado')).json();
-    if (e.en_curso) { setUpdateBusy(true); pollActualizar(); }
-    return e;
-  } catch(e) { return null; }
-}
-
-function setUpdateBusy(busy) {
-  const b = document.getElementById('btn-update');
-  b.disabled = busy;
-  b.innerHTML = busy ? `${iconSvg('refresh',{size:14})}Actualizando…` : `${iconSvg('refresh',{size:14})}Actualizar ahora`;
-}
-
-function pollActualizar() {
-  if (updatePolling) return;
-  updatePolling = true;
-  const tick = async () => {
-    let e = null;
-    try { e = await (await fetch('/api/actualizar/estado')).json(); } catch(_) {}
-    if (e && !e.en_curso) {
-      updatePolling = false;
-      setUpdateBusy(false);
-      await Promise.all([loadDocs(currentPage), loadStats(), loadLog()]);
-      if (e.ultimo_error) showToast('Error al actualizar: ' + e.ultimo_error);
-      else showToast(`Actualización completa: ${e.ultimo_nuevos ?? 0} nuevos.`);
-      return;
-    }
-    setTimeout(tick, 4000);
+function renderDecadas(datos, total) {
+  const el = $('chart-decadas');
+  if (!datos.length) { el.innerHTML = '<div class="chart-empty">Aún no hay documentos con fecha conocida.</div>'; return; }
+  const max = Math.max(...datos.map(d => d.n), 1);
+  const sinFecha = total - datos.reduce((a, d) => a + d.n, 0);
+  el.innerHTML = `<div class="col-chart">${datos.map(d => `
+      <button type="button" class="col" data-dec="${escHtml(d.decada)}" aria-label="Años ${escHtml(d.decada)}: ${d.n} documentos. Filtrar"
+              data-tip-val="${fmtNum(d.n)}" data-tip-lbl="documentos de los ${escHtml(d.decada.slice(2))}">
+        <span class="col-val">${fmtNum(d.n)}</span>
+        <span class="col-bar" style="height:${Math.max(2, Math.round(d.n / max * 108))}px"></span>
+        <span class="col-lbl">${escHtml(d.decada)}s</span>
+      </button>`).join('')}</div>`
+    + (sinFecha > 0 ? `<div class="chart-empty" style="padding:8px 0 0">${fmtNum(sinFecha)} sin fecha conocida · pulsa una década para filtrar</div>` : '');
+  el.onclick = e => {
+    const b = e.target.closest('.col');
+    if (!b) return;
+    const dec = parseInt(b.dataset.dec, 10);
+    $('f-desde').value = `${dec}-01-01`; $('f-hasta').value = `${dec + 9}-12-31`;
+    st.docFijo = null;
+    loadDocs(1, { scroll: true });
   };
-  setTimeout(tick, 4000);
+  Tip.bind(el);
 }
 
-async function triggerUpdate() {
-  setUpdateBusy(true);
-  showToast('Iniciando rastreo de fuentes…');
-  try {
-    const d = await (await fetch('/api/actualizar', { method: 'POST' })).json();
-    if (!d.ok && !d.en_curso) { showToast(d.error || 'No se pudo iniciar la actualización.'); setUpdateBusy(false); return; }
-    pollActualizar();
-  } catch(e) { showToast('Sin conexión.'); setUpdateBusy(false); }
+/* ---------------- Registro ---------------- */
+async function loadLog() {
+  const rows = await api('/api/actualizaciones');
+  if (!Array.isArray(rows)) return;
+  const tbody = $('log-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:18px">Sin actualizaciones aún.</td></tr>';
+    return;
+  }
+  const clase = e => e === 'OK' ? 'status-ok' : (e === 'ERROR' ? 'status-error' : 'status-warn');
+  tbody.innerHTML = rows.map(r => `
+    <tr><td title="${escHtml(r.timestamp || '')}">${escHtml(fmtFechaHora(r.timestamp))}</td><td>${escHtml(r.fuente || '—')}</td>
+    <td>${r.docs_encontrados ?? '—'}</td><td>${r.docs_nuevos ?? '—'}</td>
+    <td class="${clase(r.estado)}">${escHtml(r.estado || '')}</td>
+    <td class="detalle">${escHtml(r.detalle || '')}</td></tr>`).join('');
+  const ultima = rows.find(r => !/^IA |^Informes/.test(r.fuente || '')) || rows[0];
+  const ok = ultima.estado !== 'ERROR';
+  $('update-status').innerHTML = `<span class="status-dot ${ok ? 'ok' : 'off'}"></span>Última actualización ${escHtml(fmtRelativo(ultima.timestamp))}`;
+  $('log-resumen').textContent = `· ${fmtRelativo(ultima.timestamp)}`;
 }
 
-async function checkIaEstado() {
-  try {
-    const e = await (await fetch('/api/ia/estado')).json();
-    document.getElementById('ia-banner').style.display = e.configurada ? 'none' : 'flex';
-    const btn = document.getElementById('btn-ia');
-    if (e.configurada) {
-      btn.style.display = 'inline-flex';
-      btn.innerHTML = iconSvg('sparkles',{size:14}) + (e.pendientes > 0 ? `Analizar ${e.pendientes} pendiente(s)` : 'Analizar pendientes');
-      btn.disabled = e.pendientes === 0;
-    } else btn.style.display = 'none';
-    const btnT = document.getElementById('btn-traducir');
-    if (e.configurada && e.titulos_pendientes > 0) {
-      btnT.style.display = 'inline-flex';
-      btnT.innerHTML = iconSvg('globe',{size:14}) + `Traducir ${e.titulos_pendientes} título(s)`;
-      btnT.disabled = false;
-    } else btnT.style.display = 'none';
-  } catch(e) {}
+/* ---------------- Tareas en segundo plano ---------------- */
+const tareas = { act: false, ia: false, vigilando: false };
+
+function pintarTarea(act, analisis) {
+  const bar = $('task-bar'), prog = $('task-progress');
+  let texto = '', meta = '', p = null;
+  if (act && act.en_curso) {
+    texto = `<strong>Actualizando fuentes</strong>${act.fase ? ' · ' + escHtml(act.fase) : ''}`;
+    p = act.progreso; meta = act.desde ? 'desde ' + fmtRelativo(act.desde) : '';
+  } else if (analisis && analisis.en_curso) {
+    texto = `<strong>Resumiendo con IA</strong>${analisis.fase ? ' · ' + escHtml(analisis.fase) : ''}`;
+    p = analisis.progreso; meta = analisis.desde ? 'desde ' + fmtRelativo(analisis.desde) : '';
+  }
+  bar.hidden = !texto;
+  if (!texto) return;
+  $('task-text').innerHTML = texto;
+  $('task-meta').textContent = (p && p[1] ? `${p[0]} de ${p[1]} · ` : '') + meta;
+  prog.classList.toggle('indeterminate', !(p && p[1]));
+  prog.firstElementChild.style.width = p && p[1] ? (p[0] / p[1] * 100) + '%' : '';
 }
 
-async function traducirTitulos() {
-  const b = document.getElementById('btn-traducir');
-  b.disabled = true; b.innerHTML = iconSvg('globe',{size:14}) + 'Traduciendo…';
-  showToast('Traduciendo títulos…');
-  try {
-    const d = await (await fetch('/api/ia/traducir_titulos', { method: 'POST' })).json();
-    if (d.ok) { showToast(`${d.traducidos} título(s) traducido(s).`); await Promise.all([loadDocs(currentPage), checkIaEstado()]); }
-    else { showToast(d.error||'Error al traducir.'); b.disabled = false; }
-  } catch(e) { showToast('Sin conexión.'); b.disabled = false; }
+function pintarBotones(ia, act) {
+  const bUp = $('btn-update');
+  bUp.disabled = !!(act && act.en_curso);
+  bUp.classList.toggle('is-busy', bUp.disabled);
+  bUp.innerHTML = iconSvg('refresh', {size: 14}) + (bUp.disabled ? 'Actualizando…' : 'Actualizar fuentes');
+  if (!ia || ia.ok === false) return;
+  $('ia-banner').hidden = !!ia.configurada;
+  if (!ia.configurada) $('ia-banner-msg').textContent = ia.mensaje || 'Configura un motor en config.py.';
+  const bIA = $('btn-ia'), corriendo = ia.analisis && ia.analisis.en_curso;
+  const sinTexto = st.stats ? st.stats.sin_texto : 0;
+  bIA.hidden = !ia.configurada;
+  bIA.dataset.reintentar = '';
+  if (corriendo) { bIA.disabled = true; bIA.innerHTML = iconSvg('sparkles', {size: 14}) + 'Resumiendo…'; }
+  else if (ia.pendientes > 0) { bIA.disabled = false; bIA.innerHTML = iconSvg('sparkles', {size: 14}) + `Resumir ${fmtNum(ia.pendientes)} pendientes`; }
+  else if (ia.vision && sinTexto > 0) { bIA.disabled = false; bIA.dataset.reintentar = '1'; bIA.innerHTML = iconSvg('scan', {size: 14}) + `Leer ${fmtNum(sinTexto)} escaneados con visión`; }
+  else { bIA.disabled = true; bIA.innerHTML = iconSvg('check-circle', {size: 14}) + 'Todo resumido'; }
+  const bT = $('btn-traducir');
+  bT.hidden = !(ia.configurada && ia.titulos_pendientes > 0);
+  if (!bT.hidden && !bT.classList.contains('is-busy')) bT.innerHTML = iconSvg('globe', {size: 14}) + `Traducir ${fmtNum(ia.titulos_pendientes)} títulos`;
 }
 
-async function analizarUno(docId, btnEl) {
-  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = iconSvg('sparkles',{size:14}) + 'Analizando…';
-  showToast('Resumiendo con IA…');
-  try {
-    const d = await (await fetch('/api/ia/analizar/'+encodeURIComponent(docId), {method:'POST'})).json();
-    if (d.ok) { showToast('Resumen IA listo.'); await Promise.all([loadDocs(currentPage), loadStats(), checkIaEstado()]); }
-    else { showToast(d.error||'Error al analizar.'); btnEl.disabled=false; btnEl.innerHTML=o; }
-  } catch(e) { showToast('Sin conexión.'); btnEl.disabled=false; btnEl.innerHTML=o; }
+async function vigilarTareas() {
+  const [act, ia] = await Promise.all([api('/api/actualizar/estado'), api('/api/ia/estado')]);
+  const analisis = ia && ia.analisis;
+  pintarTarea(act, analisis);
+  pintarBotones(ia, act);
+  const actCorre = !!(act && act.en_curso), iaCorre = !!(analisis && analisis.en_curso);
+
+  if (tareas.act && !actCorre) {   // acaba de terminar la actualización
+    if (act.ultimo_error) showToast('Error al actualizar: ' + act.ultimo_error, 'error');
+    else showToast(`Actualización completa: ${plural(act.ultimo_nuevos || 0, 'documento nuevo', 'documentos nuevos')}.`, 'ok');
+    refrescarTodo();
+  }
+  if (tareas.ia && !iaCorre) {     // acaba de terminar un lote de análisis
+    const r = analisis.ultimo_resultado || {};
+    if (analisis.ultimo_error) showToast('Análisis IA: ' + analisis.ultimo_error, 'error');
+    else showToast(`Análisis IA: ${plural((r.analizados || 0) + (r.rellenados || 0), 'documento resumido', 'documentos resumidos')}`
+      + (r.sin_texto ? `, ${r.sin_texto} sin texto legible` : '') + (r.restantes ? `. Quedan ${r.restantes}.` : '.'), 'ok');
+    refrescarTodo();
+  }
+  tareas.act = actCorre; tareas.ia = iaCorre;
+  if (actCorre || iaCorre) { tareas.vigilando = true; setTimeout(vigilarTareas, 3000); }
+  else tareas.vigilando = false;
+}
+function vigilar() { if (!tareas.vigilando) { tareas.vigilando = true; setTimeout(vigilarTareas, 1200); } }
+
+function refrescarTodo() { return Promise.all([loadDocs(), loadStats(), loadLog(), loadFiltros()]); }
+
+$('btn-update').addEventListener('click', async () => {
+  const d = await api('/api/actualizar', { method: 'POST' });
+  if (d.ok || d.en_curso) { showToast('Rastreando las fuentes oficiales…'); vigilar(); }
+  else showToast(d.error || 'No se pudo iniciar la actualización.', 'error');
+});
+
+$('btn-ia').addEventListener('click', async () => {
+  const b = $('btn-ia');
+  const url = '/api/ia/analizar_pendientes' + (b.dataset.reintentar ? '?reintentar=1' : '');
+  b.disabled = true;
+  const d = await api(url, { method: 'POST' });
+  if (d.ok || d.en_curso) { showToast('Resumen en segundo plano iniciado.'); vigilar(); }
+  else { showToast(d.error || 'No se pudo iniciar el análisis.', 'error'); b.disabled = false; }
+});
+
+$('btn-traducir').addEventListener('click', async () => {
+  const b = $('btn-traducir');
+  b.disabled = true; b.classList.add('is-busy'); b.innerHTML = iconSvg('globe', {size: 14}) + 'Traduciendo…';
+  const d = await api('/api/ia/traducir_titulos', { method: 'POST' });
+  b.classList.remove('is-busy'); b.disabled = false;
+  if (d.ok) { showToast(`${plural(d.traducidos, 'título traducido', 'títulos traducidos')}.`, 'ok'); refrescarTodo(); vigilarTareas(); }
+  else showToast(d.error || 'Error al traducir.', 'error');
+});
+
+async function analizarUno(id, btn) {
+  const o = btn.innerHTML;
+  btn.disabled = true; btn.classList.add('is-busy'); btn.innerHTML = iconSvg('sparkles', {size: 14}) + 'Analizando…';
+  const d = await api('/api/ia/analizar/' + encodeURIComponent(id), { method: 'POST' });
+  if (d.ok) {
+    showToast(d.sin_texto ? 'El documento no tiene texto legible.' : 'Resumen listo.', d.sin_texto ? 'info' : 'ok');
+    st.abiertos.add(id);
+    await Promise.all([loadDocs(), loadStats()]);
+    vigilarTareas();
+  } else { showToast(d.error || 'Error al analizar.', 'error'); btn.disabled = false; btn.classList.remove('is-busy'); btn.innerHTML = o; }
 }
 
-async function analizarPendientes() {
-  const b = document.getElementById('btn-ia');
-  b.disabled = true; b.innerHTML = iconSvg('sparkles',{size:14}) + 'Analizando…';
-  showToast('Analizando pendientes…');
-  try {
-    const d = await (await fetch('/api/ia/analizar_pendientes', {method:'POST'})).json();
-    if (d.ok) {
-      let m = `${d.analizados} analizado(s).`;
-      if (d.restantes>0) m += ` Quedan ${d.restantes}.`;
-      showToast(m);
-      await Promise.all([loadDocs(currentPage), loadStats(), checkIaEstado()]);
-    } else showToast(d.error||'Error al analizar.');
-  } catch(e) { showToast('Sin conexión.'); }
-  b.disabled = false; checkIaEstado();
+async function generarInforme(id, btn) {
+  if (btn.dataset.hay === '1') { window.location = '/api/informe/' + encodeURIComponent(id); return; }
+  const o = btn.innerHTML;
+  btn.disabled = true; btn.classList.add('is-busy'); btn.innerHTML = iconSvg('refresh', {size: 14}) + 'Generando informe…';
+  const d = await api('/api/informe/' + encodeURIComponent(id) + '/generar', { method: 'POST' });
+  btn.disabled = false; btn.classList.remove('is-busy');
+  if (d.ok) {
+    showToast('Informe listo. Descargando…', 'ok');
+    btn.dataset.hay = '1'; btn.innerHTML = iconSvg('download', {size: 14}) + 'Descargar informe PDF';
+    window.location = d.url_descarga;
+    loadStats();
+  } else { showToast(d.error || 'Error al generar el informe.', 'error'); btn.innerHTML = o; }
 }
 
-async function generarInforme(docId, btnEl) {
-  const o = btnEl.innerHTML; btnEl.disabled = true; btnEl.innerHTML = iconSvg('file-text',{size:14}) + 'Generando…';
-  showToast('Generando informe PDF…');
-  try {
-    const d = await (await fetch('/api/informe/'+encodeURIComponent(docId)+'/generar', {method:'POST'})).json();
-    if (d.ok) {
-      showToast('Informe listo. Descargando…');
-      window.location = d.url_descarga;
-      btnEl.innerHTML = iconSvg('download',{size:14}) + 'Descargar informe PDF'; btnEl.disabled=false;
-    } else { showToast(d.error||'Error al generar el informe.'); btnEl.innerHTML=o; btnEl.disabled=false; }
-  } catch(e) { showToast('Sin conexión.'); btnEl.innerHTML=o; btnEl.disabled=false; }
-}
-
-function clearFilters() {
-  ['search-input','filter-categoria','filter-pais','filter-confianza','filter-verificado','filter-desde','filter-hasta'].forEach(id => document.getElementById(id).value = '');
+/* ---------------- Controles de filtro ---------------- */
+$('search-input').addEventListener('input', () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(() => { st.docFijo = null; loadDocs(1); }, 300); });
+['f-fuente', 'f-categoria', 'f-pais', 'f-confianza', 'f-ia', 'f-desde', 'f-hasta', 'f-orden'].forEach(id =>
+  $(id).addEventListener('change', () => { st.docFijo = null; loadDocs(1); }));
+$('btn-limpiar').addEventListener('click', () => {
+  Object.values(FILTROS).forEach(id => { if (id !== 'f-orden') $(id).value = ''; });
+  st.docFijo = null;
   loadDocs(1);
-}
+});
 
-function showToast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 4000); }
-function escHtml(s) { return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function escAttr(s) { if (!s) return '#'; if (!/^https?:\/\//i.test(s)) return '#'; return String(s).replace(/"/g,'&quot;'); }
-
-(async function() {
-  mountIcons();
-  // Soporta enlazar aquí con una búsqueda ya rellenada (p. ej. desde "respaldo oficial" en un dossier).
-  const q = new URLSearchParams(window.location.search).get('busqueda');
-  if (q) document.getElementById('search-input').value = q;
-  await Promise.all([loadDocs(1), loadStats(), loadLog(), checkIaEstado(), checkActualizarEstado()]);
-  setInterval(() => { loadStats(); loadLog(); checkIaEstado(); }, 300000);
+/* ---------------- Arranque ---------------- */
+(async function () {
+  aplicarURL();
+  await Promise.all([loadFiltros(), loadDocs(), loadStats(), loadLog()]);
+  await vigilarTareas();
+  setInterval(() => { loadStats(); loadLog(); if (!tareas.vigilando) vigilarTareas(); }, 120000);
 })();
 </script>
-</body>
-</html>
+{% endblock %}

@@ -33,6 +33,12 @@ echo "Verificando dependencias..."
     exit 1
 }
 
+if [ ! -f config.py ]; then
+    echo "Creando config.py a partir de la plantilla config.example.py..."
+    cp config.example.py config.py
+    echo "Recuerda poner tu clave de API en config.py para activar la IA."
+fi
+
 echo
 echo "Iniciando servidor..."
 echo "Se abrirá el navegador automáticamente en http://localhost:5790"
